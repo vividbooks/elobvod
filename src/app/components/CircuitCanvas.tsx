@@ -263,6 +263,38 @@ function getTerminalHalfGrid(comp: PlacedComponent): [{ hx: number; hy: number }
 }
 
 /**
+ * Iterate all unit-step edges of all wires (expanding H/V segments into
+ * individual half-grid steps). Calls `cb(key1, key2)` for each edge.
+ * This ensures graph-building code sees ALL half-grid points on a wire,
+ * not just the stored vertices, so T-junctions mid-segment are detected.
+ */
+function forEachWireUnitEdge(
+  wires: Wire[],
+  nodeKey: (hx: number, hy: number) => string,
+  cb: (k1: string, k2: string) => void,
+) {
+  for (const wire of wires) {
+    for (let i = 0; i < wire.points.length - 1; i++) {
+      const a = wire.points[i];
+      const b = wire.points[i + 1];
+      if (a.hx === b.hx) {
+        const step = a.hy < b.hy ? 1 : -1;
+        for (let hy = a.hy; hy !== b.hy; hy += step) {
+          cb(nodeKey(a.hx, hy), nodeKey(a.hx, hy + step));
+        }
+      } else if (a.hy === b.hy) {
+        const step = a.hx < b.hx ? 1 : -1;
+        for (let hx = a.hx; hx !== b.hx; hx += step) {
+          cb(nodeKey(hx, a.hy), nodeKey(hx + step, a.hy));
+        }
+      } else {
+        cb(nodeKey(a.hx, a.hy), nodeKey(b.hx, b.hy));
+      }
+    }
+  }
+}
+
+/**
  * Find a wire segment that passes through a grid cell, allowing us to
  * insert a component there by splitting the wire.
  */
@@ -362,14 +394,7 @@ function runTopologyCheck(
     adj.get(b)!.push({ to: a, compId });
   };
 
-  for (const wire of wires) {
-    for (let i = 0; i < wire.points.length - 1; i++) {
-      addEdge(
-        nodeKey(wire.points[i].hx, wire.points[i].hy),
-        nodeKey(wire.points[i + 1].hx, wire.points[i + 1].hy),
-      );
-    }
-  }
+  forEachWireUnitEdge(wires, nodeKey, (k1, k2) => addEdge(k1, k2));
 
   for (const comp of components) {
     if (comp.type === 'voltmeter') continue; // voltmeter has infinite impedance
@@ -467,14 +492,7 @@ function leafTrimNodes(
     adj.get(b)!.add(a);
   };
 
-  for (const wire of wires) {
-    for (let i = 0; i < wire.points.length - 1; i++) {
-      addEdge(
-        nodeKey(wire.points[i].hx, wire.points[i].hy),
-        nodeKey(wire.points[i + 1].hx, wire.points[i + 1].hy),
-      );
-    }
-  }
+  forEachWireUnitEdge(wires, nodeKey, (k1, k2) => addEdge(k1, k2));
 
   // Include ALL components (battery forms the closing edge of the loop)
   for (const comp of components) {
@@ -844,15 +862,8 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       if (ra !== rb) ufParent.set(ra, rb);
     };
 
-    // Merge all wire segments
-    for (const wire of wires) {
-      for (let i = 0; i < wire.points.length - 1; i++) {
-        ufUnion(
-          nodeKey(wire.points[i].hx, wire.points[i].hy),
-          nodeKey(wire.points[i + 1].hx, wire.points[i + 1].hy),
-        );
-      }
-    }
+    // Merge all wire segments (expanded to unit steps so mid-segment T-junctions work)
+    forEachWireUnitEdge(wires, nodeKey, (k1, k2) => ufUnion(k1, k2));
 
     // ── Check for short-circuited voltage sources (terminals in same super-node) ──
     const isSourceType = (t: ComponentType) =>
@@ -1714,6 +1725,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
   const svgRef = useRef<SVGSVGElement>(null);
   const freehandPathRef = useRef<SVGPolylineElement>(null);
   const isDrawingRef = useRef(false);
+  const justFinishedDrawingRef = useRef(false);
   const freehandPtsRef = useRef<{ x: number; y: number }[]>([]);
   const panStartRef = useRef<{ cx: number; cy: number; px: number; py: number } | null>(null);
 
@@ -1738,6 +1750,42 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
   const startRow = Math.floor(vy / GRID_SIZE) - 1;
   const endRow   = Math.ceil((vy + vh) / GRID_SIZE) + 1;
 
+  const collectWireConnPoints = useCallback((wireList: Wire[]): ConnPoint[] => {
+    const out: ConnPoint[] = [];
+    const seen = new Set<string>();
+    const add = (hx: number, hy: number) => {
+      const key = `${hx},${hy}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ x: hx * HALF, y: hy * HALF });
+    };
+
+    for (const wire of wireList) {
+      if (wire.points.length === 0) continue;
+
+      for (let i = 0; i < wire.points.length - 1; i++) {
+        const a = wire.points[i];
+        const b = wire.points[i + 1];
+        add(a.hx, a.hy);
+
+        if (a.hx === b.hx) {
+          const step = a.hy < b.hy ? 1 : -1;
+          for (let hy = a.hy + step; hy !== b.hy; hy += step) add(a.hx, hy);
+          add(b.hx, b.hy);
+        } else if (a.hy === b.hy) {
+          const step = a.hx < b.hx ? 1 : -1;
+          for (let hx = a.hx + step; hx !== b.hx; hx += step) add(hx, a.hy);
+          add(b.hx, b.hy);
+        } else {
+          // Should not happen after orthogonalization, but keep endpoints safe.
+          add(b.hx, b.hy);
+        }
+      }
+    }
+
+    return out;
+  }, []);
+
   const connPoints = useMemo(() => {
     const pts = components.filter(c => c.type !== 'voltmeter').flatMap(getConnPoints);
     // Include wiper terminals for potentiometers
@@ -1751,34 +1799,25 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     return pts;
   }, [components]);
 
-  // ── Collect all wire points for snap targets (enables branching) ──
+  // ── Snap při kreslení: svorky + všechny body podél drátů (vrcholy i střed úseku) ──
   const wireSnapPoints = useMemo(() => {
-    const points: ConnPoint[] = [];
-    for (const wire of wires) {
-      for (const pt of wire.points) {
-        points.push({ x: pt.hx * HALF, y: pt.hy * HALF });
-      }
-    }
-    return points;
-  }, [wires]);
+    return collectWireConnPoints(wires);
+  }, [wires, collectWireConnPoints]);
 
   const nearestConn = useMemo(() => {
     if (!mouseSvgPos || tool !== 'wire') return null;
     let best: ConnPoint | null = null;
     let bestDist = CONN_SNAP_DIST;
     
-    // Check component terminals first (priority)
+    // Pick the closest snap target (components and wires equally).
     for (const cp of connPoints) {
       const d = Math.hypot(cp.x - mouseSvgPos.x, cp.y - mouseSvgPos.y);
       if (d < bestDist) { bestDist = d; best = cp; }
     }
-    
-    // If no nearby component terminal, check wire points (for branching)
-    if (!best) {
-      for (const wp of wireSnapPoints) {
-        const d = Math.hypot(wp.x - mouseSvgPos.x, wp.y - mouseSvgPos.y);
-        if (d < bestDist) { bestDist = d; best = wp; }
-      }
+
+    for (const wp of wireSnapPoints) {
+      const d = Math.hypot(wp.x - mouseSvgPos.x, wp.y - mouseSvgPos.y);
+      if (d < bestDist) { bestDist = d; best = wp; }
     }
     
     return best;
@@ -1961,68 +2000,95 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
   const finishFreehand = useCallback(() => {
     if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
+    justFinishedDrawingRef.current = true;
+    requestAnimationFrame(() => { justFinishedDrawingRef.current = false; });
     freehandPathRef.current?.setAttribute('display', 'none');
     const pts = freehandPtsRef.current;
     freehandPtsRef.current = [];
     if (pts.length < 2) return;
 
-    // ── Snap wire END to nearest terminal OR wire point (for branching) ──
+    // ── Oba konce: svorka nebo libovolný kontaktní bod na drátu (včetně úseku mezi rohy) ──
     const allConns = stateRef.current.components.flatMap(getConnPoints);
-    // Include wiper terminals for potentiometers and base terminals for NPN
     for (const c of stateRef.current.components) {
       const wp = getWiperConnPoint(c);
       if (wp) allConns.push(wp);
       const bp = getBaseConnPoint(c);
       if (bp) allConns.push(bp);
     }
-    const allWirePoints: ConnPoint[] = [];
-    for (const wire of stateRef.current.wires) {
-      for (const pt of wire.points) {
-        allWirePoints.push({ x: pt.hx * HALF, y: pt.hy * HALF });
-      }
-    }
-    
-    const lastPt = pts[pts.length - 1];
-    let nearEndConn: ConnPoint | null = null;
-    let nearEndDist = CONN_SNAP_DIST;
-    
-    // Check component terminals first (priority)
-    for (const cp of allConns) {
-      const d = Math.hypot(cp.x - lastPt.x, cp.y - lastPt.y);
-      if (d < nearEndDist) { nearEndDist = d; nearEndConn = cp; }
-    }
-    
-    // If no nearby component terminal, check wire points (for branching)
-    if (!nearEndConn) {
-      for (const wp of allWirePoints) {
-        const d = Math.hypot(wp.x - lastPt.x, wp.y - lastPt.y);
-        if (d < nearEndDist) { nearEndDist = d; nearEndConn = wp; }
-      }
-    }
-    
-    if (nearEndConn) pts[pts.length - 1] = { x: nearEndConn.x, y: nearEndConn.y };
+    const allWirePoints = collectWireConnPoints(stateRef.current.wires);
 
+    const snapEndpointRequired = (pt: { x: number; y: number }): ConnPoint | null => {
+      let best: ConnPoint | null = null;
+      let bestDist = CONN_SNAP_DIST;
+      for (const cp of allConns) {
+        const d = Math.hypot(cp.x - pt.x, cp.y - pt.y);
+        if (d < bestDist) { bestDist = d; best = cp; }
+      }
+      for (const wp of allWirePoints) {
+        const d = Math.hypot(wp.x - pt.x, wp.y - pt.y);
+        if (d < bestDist) { bestDist = d; best = wp; }
+      }
+      return best;
+    };
+
+    const startSnap = snapEndpointRequired(pts[0]);
+    const endSnap = snapEndpointRequired(pts[pts.length - 1]);
+    if (!startSnap || !endSnap) {
+      toast.error('Oba konce drátu musí být u kontaktního bodu (svorka nebo bod na drátu).');
+      return;
+    }
+    pts[0] = startSnap;
+    pts[pts.length - 1] = endSnap;
+    if (
+      Math.round(startSnap.x / HALF) === Math.round(endSnap.x / HALF) &&
+      Math.round(startSnap.y / HALF) === Math.round(endSnap.y / HALF)
+    ) {
+      toast.error('Začátek a konec jsou ve stejném bodě.');
+      return;
+    }
+
+    const cur = stateRef.current;
     const snapped = pts.map((p, idx) => {
       if (idx === 0 || idx === pts.length - 1) {
-        // Endpoints must match terminal positions exactly (even hx is fine)
         return { hx: Math.round(p.x / HALF), hy: Math.round(p.y / HALF) };
       }
-      // Intermediate points: snap to cell centres (odd half-grid values)
       return {
         hx: toOdd(Math.round(p.x / HALF)),
         hy: toOdd(Math.round(p.y / HALF)),
       };
     });
-    // Orthogonalize: convert any diagonal segments to H/V only,
-    // keeping bends at cell-centre intersections
     const clean = orthogonalizePath(simplifyPath(snapped));
-    if (clean.length >= 2) {
-      const cur = stateRef.current;
-      const newWires = [...cur.wires, { id: crypto.randomUUID(), points: clean }];
-      setWires(newWires);
-      pushHistory({ ...cur, wires: newWires });
+    if (clean.length < 2) return;
+
+    // Insert junction points into existing wires so Union-Find sees the T-connection.
+    let updatedWires = cur.wires;
+    const junctions = [clean[0], clean[clean.length - 1]];
+    for (const jp of junctions) {
+      updatedWires = updatedWires.map(wire => {
+        for (let si = 0; si < wire.points.length - 1; si++) {
+          const a = wire.points[si];
+          const b = wire.points[si + 1];
+          if ((jp.hx === a.hx && jp.hy === a.hy) || (jp.hx === b.hx && jp.hy === b.hy)) {
+            break;
+          }
+          let onSeg = false;
+          if (a.hx === b.hx && jp.hx === a.hx)
+            onSeg = Math.min(a.hy, b.hy) < jp.hy && jp.hy < Math.max(a.hy, b.hy);
+          else if (a.hy === b.hy && jp.hy === a.hy)
+            onSeg = Math.min(a.hx, b.hx) < jp.hx && jp.hx < Math.max(a.hx, b.hx);
+          if (onSeg) {
+            const newPts = [...wire.points];
+            newPts.splice(si + 1, 0, { hx: jp.hx, hy: jp.hy });
+            return { ...wire, points: newPts };
+          }
+        }
+        return wire;
+      });
     }
-  }, [pushHistory]);
+    const newWires = [...updatedWires, { id: crypto.randomUUID(), points: clean }];
+    setWires(newWires);
+    pushHistory({ ...cur, wires: newWires });
+  }, [pushHistory, collectWireConnPoints]);
 
   const handleMouseUp = useCallback(() => {
     // ── Wiper drop ���─
@@ -2044,12 +2110,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
         const bp = getBaseConnPoint(c);
         if (bp) allConns.push(bp);
       }
-      const allWirePoints: ConnPoint[] = [];
-      for (const wire of stateRef.current.wires) {
-        for (const pt of wire.points) {
-          allWirePoints.push({ x: pt.hx * HALF, y: pt.hy * HALF });
-        }
-      }
+      const allWirePoints = collectWireConnPoints(stateRef.current.wires);
       let bestPt: { x: number; y: number } | null = null;
       let bestDist = PROBE_SNAP_DIST;
       for (const cp of allConns) {
@@ -2089,37 +2150,11 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     if (dragRef.current) {
       if (dragRef.current.hasMoved && dragTarget) {
         const orig = dragRef.current.origComp;
-        const oldTerms = getTerminalHalfGrid(orig);
         const movedComp: PlacedComponent = { ...orig, cx: dragTarget.cx, cy: dragTarget.cy };
-        const newTerms = getTerminalHalfGrid(movedComp);
-        // Also handle wiper terminal for potentiometers and base for NPN
-        const oldWiper = getWiperTerminalHalfGrid(orig);
-        const newWiper = getWiperTerminalHalfGrid(movedComp);
-        const oldBase = getBaseTerminalHalfGrid(orig);
-        const newBase = getBaseTerminalHalfGrid(movedComp);
         const cur = stateRef.current;
-        const newWires = cur.wires.map(wire => {
-          // Update any endpoint that matched an old terminal (including wiper/base)
-          const updated = wire.points.map(pt => {
-            if (pt.hx === oldTerms[0].hx && pt.hy === oldTerms[0].hy) return { ...newTerms[0] };
-            if (pt.hx === oldTerms[1].hx && pt.hy === oldTerms[1].hy) return { ...newTerms[1] };
-            if (oldWiper && newWiper && pt.hx === oldWiper.hx && pt.hy === oldWiper.hy) return { ...newWiper };
-            if (oldBase && newBase && pt.hx === oldBase.hx && pt.hy === oldBase.hy) return { ...newBase };
-            return pt;
-          });
-          const wasAffected = updated.some((pt, i) =>
-            pt.hx !== wire.points[i].hx || pt.hy !== wire.points[i].hy,
-          );
-          if (wasAffected) {
-            // Re-route as the simplest orthogonal L-shape between the new endpoints
-            return { ...wire, points: orthoRoute(updated[0], updated[updated.length - 1]) };
-          }
-          return { ...wire, points: updated };
-        });
         const newComponents = cur.components.map(c => c.id === movedComp.id ? movedComp : c);
         setComponents(newComponents);
-        setWires(newWires);
-        pushHistory({ ...cur, components: newComponents, wires: newWires });
+        pushHistory({ ...cur, components: newComponents });
         draggedLastRef.current = true;
       }
       dragRef.current = null;
@@ -2480,7 +2515,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       setWires(newWires);
       pushHistory({ ...cur, wires: newWires });
     } else if (tool === 'wire') {
-      // Wire tool: clicking on a wire splits it and starts drawing from that point
+      if (justFinishedDrawingRef.current) return;
       const pos = clientToSvg(e.clientX, e.clientY);
       if (!pos) return;
       
@@ -2600,7 +2635,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     : tool === 'pan'    ? (panStartRef.current ? 'grabbing' : 'grab')
     : tool === 'wire'   ? 'crosshair'
     : tool === 'eraser' ? 'pointer'
-    : tool === 'select' ? (dragRef.current?.hasMoved ? 'grabbing' : 'default')
+    : tool === 'select' ? 'default'
     : 'copy';
 
   const tileSize = GRID_SIZE - TILE_INSET * 2;
@@ -2734,7 +2769,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
 
           return (
             <g key={w.id} onClick={e => handleWireClick(w.id, e)}
-              style={{ cursor: tool === 'eraser' ? 'pointer' : 'default' }}>
+              style={{ cursor: tool === 'eraser' ? 'pointer' : tool === 'pan' ? (panStartRef.current ? 'grabbing' : 'grab') : 'default' }}>
               {/* Invisible wider hit target */}
               <path d={d} fill="none" stroke="transparent" strokeWidth="16" />
               {/* Short-circuit: glowing orange halo behind wire */}
@@ -2896,7 +2931,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
               }}
               style={{
                 cursor: tool === 'eraser' ? 'pointer'
-                  : tool === 'select' ? (isDragging ? 'grabbing' : 'grab')
+                  : tool === 'pan' ? (panStartRef.current ? 'grabbing' : 'grab')
                   : 'default',
                 opacity: isDragging ? 0.82 : 1,
               }}>
@@ -3154,13 +3189,13 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
             style={{ pointerEvents: 'none' }} />
         )}
 
-        {/* Wire snap points (for branching) – show when wire tool is active */}
-        {tool === 'wire' && !isDrawingRef.current && wireSnapPoints.map((pt, i) => (
+        {/* Wire snap targets: terminals + all points along wire segments */}
+        {tool === 'wire' && wireSnapPoints.map((pt, i) => (
           <circle key={`snap-${i}`} cx={pt.x} cy={pt.y} r={3.5}
             fill="#3b82f6" opacity="0.25" style={{ pointerEvents: 'none' }} />
         ))}
 
-        {nearestConn && !isDrawingRef.current && (
+        {nearestConn && (
           <circle cx={nearestConn.x} cy={nearestConn.y} r={CONN_HIGHLIGHT_R}
             fill="#dc2626" opacity="0.18" style={{ pointerEvents: 'none' }} />
         )}
