@@ -10,6 +10,17 @@ import { ShareModal } from './components/ShareModal';
 
 const BG = '#edecf0';
 
+/*
+  Elektrony na drátech (animace) jsou vypnuté: CircuitCanvas má showWireElectrons výchozí false.
+  Kód vykreslení a výpočet wireVertexFlow zůstávají; při true se chová jako dřív.
+
+  Obnovení animace na drátech:
+  – Rychle: v CircuitCanvas změň default u showWireElectrons na true, nebo v App přidej
+    <CircuitCanvas … showWireElectrons />.
+  – S přepínačem v liště: viz dřívější kroky (TopBar props + tlačítko, useState v App,
+    předat showWireElectrons na CircuitCanvas, nápověda); git historie „Elektrony v drátech“.
+*/
+
 /** Returns true if the primary input device is touch (tablet / phone). */
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(() =>

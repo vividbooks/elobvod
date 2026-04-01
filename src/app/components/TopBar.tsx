@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { ZoomIn, ZoomOut, Maximize, Eye, Info, X } from 'lucide-react';
 import type { ViewMode } from './ComponentSvg';
 
-const NAVY = '#1e1b4b';
 const BG = '#edecf0';
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4.0;
@@ -176,7 +175,7 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
                 Tříterminálová součástka s vývody <b>C</b> (kolektor), <b>B</b> (báze) a <b>E</b> (emitor). Řídí proud mezi kolektorem a emitorem pomocí proudu do báze.
               </Section>
               <Section title="Zobrazení">
-                Přepněte mezi <b>realistickým</b> a <b>schématickým</b> pohledem pomocí přepínače „Schéma" v horním panelu.
+                Přepněte mezi <b>realistickým</b> a <b>schématickým</b> pohledem pomocí přepínače „Schéma“ v horním panelu.
               </Section>
               <Section title="Zoom a posun">
                 Kolečkem myši nebo tlačítky <b>+/−</b> přibližujte/oddalujte. Plátno posunete tažením se stisknutým <b>prostředním tlačítkem</b> nebo na dotykovém zařízení dvěma prsty (pinch-to-zoom).

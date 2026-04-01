@@ -70,6 +70,9 @@ const BULB_BRIGHT_MAX = 1.500;
 const SHORT_CIRCUIT_THRESHOLD = 100; // A – over this → visual short-circuit effect
 const SHORT_CIRCUIT_PATH_THRESHOLD = 10; // A – wires/components with current ≥ this are highlighted orange
 
+/** Rychlost elektronů: px/s na 1 A (striktně úměrné proudu v obvodu) */
+const ELECTRON_SPEED_PER_AMP = 60;
+
 interface PlacedComponent {
   id: string;
   type: ComponentType;
@@ -118,6 +121,8 @@ interface Props {
   onPanelOpenChange?: (open: boolean) => void;
   /** True = primární vstup je dotyk (tablet/telefon) */
   isTouch?: boolean;
+  /** Animace elektronů podél drátů (jen realistický pohled). Výchozí false – zapnout: true nebo prop z App. */
+  showWireElectrons?: boolean;
 }
 
 interface Snapshot {
@@ -696,7 +701,7 @@ function computeWireDirections(
   return { wireMap, compMap };
 }
 
-export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, setZoom, isViewOnly, initialState, shareHandlerRef, onPanelOpenChange, isTouch = false }: Props) {
+export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, setZoom, isViewOnly, initialState, shareHandlerRef, onPanelOpenChange, isTouch = false, showWireElectrons = false }: Props) {
   const [components, setComponents] = useState<PlacedComponent[]>(initialState?.components ?? []);
   const [wires, setWires] = useState<Wire[]>(initialState?.wires ?? []);
   const [switchStates, setSwitchStates] = useState<Record<string, boolean>>(initialState?.switchStates ?? {});
@@ -1288,10 +1293,18 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     [components, wires, switchStates, displayAnalysis.energizedNodes],
   );
 
-  // ── Short-circuit detection: totalCurrent >= 100 A ──
+  /** NPN s kladným pólem na emitoru a záporným na bázi i kolektoru (záver B–E + „obrácené“ V_CE) – reálně zničující, ve výpočtu často záver bez velkého proudu. */
+  const npnReverseDestructiveWiring = useMemo(() => {
+    for (const dbg of circuitPhysics.npnDebug.values()) {
+      if (dbg.mode === 'REVERSED') return true;
+    }
+    return false;
+  }, [circuitPhysics.npnDebug]);
+
+  // ── Short-circuit detection: velký proud z baterie NEBO destruktivní zapojení NPN ──
   const isShortCircuit = useMemo(() => {
-    return circuitPhysics.totalCurrent >= SHORT_CIRCUIT_THRESHOLD;
-  }, [circuitPhysics.totalCurrent]);
+    return circuitPhysics.totalCurrent >= SHORT_CIRCUIT_THRESHOLD || npnReverseDestructiveWiring;
+  }, [circuitPhysics.totalCurrent, npnReverseDestructiveWiring]);
 
   // ── Auto-break bulbs & LEDs when current exceeds thresholds ──
   // During a short circuit the MNA assigns 999 A to all energized components,
@@ -1326,6 +1339,19 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     if (!isShortCircuit) return { wires: emptyW, comps: emptyC };
 
     try {
+      const npnReverse = Array.from(circuitPhysics.npnDebug.entries()).some(([, d]) => d.mode === 'REVERSED');
+      if (npnReverse) {
+        const rW = new Set<string>();
+        const rC = new Set<string>();
+        for (const w of wires) rW.add(w.id);
+        const isSrcT = (t: string) => t === 'battery' || t === 'battery2' || t === 'battery3';
+        for (const comp of components) {
+          if (isSrcT(comp.type)) rC.add(comp.id);
+          if (comp.type === 'npn' && circuitPhysics.npnDebug.get(comp.id)?.mode === 'REVERSED') rC.add(comp.id);
+        }
+        return { wires: rW, comps: rC };
+      }
+
       // Determine which component types have negligible resistance (short-circuit carriers)
       const isLowR = (c: PlacedComponent): boolean => {
         if (c.type === 'switch') return !!switchStates[c.id];
@@ -1406,7 +1432,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     } catch {
       return { wires: new Set<string>(), comps: new Set<string>() };
     }
-  }, [isShortCircuit, components, wires, switchStates, bypassedResistors]);
+  }, [isShortCircuit, circuitPhysics.npnDebug, components, wires, switchStates, bypassedResistors]);
 
   // Spark positions along energized wires (randomised once per short-circuit onset)
   const [sparkSeed, setSparkSeed] = useState(0);
@@ -1438,114 +1464,189 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isShortCircuit, sparkSeed, wires, components, shortCircuitPathIds]);
 
-  // ── Electron speed: convert current (A) → px/s (I * 60) ──
+  // ── Electron speed: v = |I| · ELECTRON_SPEED_PER_AMP (px/s), bez horního stropu
   const currentToSpeed = useCallback((I: number): number => {
-    const speed = Math.abs(I) * 60;
-    // Below 2 px/s electrons are effectively stopped; cap at 300 px/s
-    if (speed < 2) return 0;
-    return Math.min(speed, 300);
+    const v = Math.abs(I) * ELECTRON_SPEED_PER_AMP;
+    return v < 1e-12 ? 0 : v;
   }, []);
 
-  // ── Per-wire current: determine how much current flows through each wire ──
-  const wireCurrents = useMemo(() => {
-    const map = new Map<string, number>();
+  // ── Per-wire current: KCL-based network flow on the wire graph ──
+  // 1) Build wire-only adjacency graph (unit-step edges between half-grid nodes)
+  // 2) At each node, compute net current injection from connected components
+  // 3) Spanning tree + post-order DFS to solve flows via Kirchhoff's current law
+  const wireVertexFlow = useMemo(() => {
+    if (!showWireElectrons) return new Map<string, number>();
+
     const { energizedComponents } = displayAnalysis;
 
-    // Build terminal → component mapping (half-grid key → component IDs)
-    const terminalToComps = new Map<string, string[]>();
-    for (const comp of components) {
-      if (comp.type === 'voltmeter') continue;
-      if (!energizedComponents.has(comp.id)) continue;
-      const [t0, t1] = getTerminalHalfGrid(comp);
-      const k0 = `${t0.hx},${t0.hy}`;
-      const k1 = `${t1.hx},${t1.hy}`;
-      terminalToComps.set(k0, [...(terminalToComps.get(k0) ?? []), comp.id]);
-      terminalToComps.set(k1, [...(terminalToComps.get(k1) ?? []), comp.id]);
-      // Include wiper terminal for potentiometers
-      if (comp.type === 'potentiometer') {
-        const wt = getWiperTerminalHalfGrid(comp);
-        if (wt) {
-          const kw = `${wt.hx},${wt.hy}`;
-          terminalToComps.set(kw, [...(terminalToComps.get(kw) ?? []), comp.id]);
-        }
-      }
-      // Include base terminal for NPN
-      if (comp.type === 'npn') {
-        const bt = getBaseTerminalHalfGrid(comp);
-        if (bt) {
-          const kb = `${bt.hx},${bt.hy}`;
-          terminalToComps.set(kb, [...(terminalToComps.get(kb) ?? []), comp.id]);
-        }
-      }
-    }
+    const nk = (hx: number, hy: number) => `${hx},${hy}`;
+    const edk = (a: string, b: string) => a < b ? `${a}|${b}` : `${b}|${a}`;
 
-    // Build adjacency: every half-grid point of every wire → wire IDs touching it
-    // (includes intermediate bend-points so junction branches are discoverable)
-    const pointToWires = new Map<string, Set<string>>();
-    for (const wire of wires) {
-      if (wire.points.length < 2) continue;
-      for (const pt of wire.points) {
-        const key = `${pt.hx},${pt.hy}`;
-        if (!pointToWires.has(key)) pointToWires.set(key, new Set());
-        pointToWires.get(key)!.add(wire.id);
-      }
-    }
-
-    // For each wire, find component current at each endpoint via BFS through wire network
-    const findCurrentAtEndpoint = (startKey: string, originWireId: string): number => {
-      const directComps = terminalToComps.get(startKey);
-      if (directComps && directComps.length > 0) {
-        let sum = 0;
-        for (const cid of directComps) sum += (circuitPhysics.currents.get(cid) ?? 0);
-        return sum;
-      }
-      // BFS through connected wires to find nearest component terminals
-      const visitedWires = new Set<string>([originWireId]);
-      const queue = [startKey];
-      const visitedPts = new Set<string>([startKey]);
-      let totalCurrent = 0;
-      let found = false;
-      while (queue.length > 0) {
-        const pt = queue.shift()!;
-        const comps = terminalToComps.get(pt);
-        if (comps && comps.length > 0) {
-          for (const cid of comps) totalCurrent += (circuitPhysics.currents.get(cid) ?? 0);
-          found = true;
-          continue; // don't traverse past component terminals
-        }
-        // Traverse ALL wires through this point (including intermediate bend-points)
-        const adjWireIds = pointToWires.get(pt);
-        if (!adjWireIds) continue;
-        for (const wid of adjWireIds) {
-          if (visitedWires.has(wid)) continue;
-          visitedWires.add(wid);
-          const w = wires.find(ww => ww.id === wid);
-          if (!w || w.points.length < 2) continue;
-          // Visit BOTH endpoints (we may have entered at an intermediate point)
-          const fk = `${w.points[0].hx},${w.points[0].hy}`;
-          const lk = `${w.points[w.points.length - 1].hx},${w.points[w.points.length - 1].hy}`;
-          for (const epKey of [fk, lk]) {
-            if (!visitedPts.has(epKey)) {
-              visitedPts.add(epKey);
-              queue.push(epKey);
-            }
-          }
-        }
-      }
-      return found ? totalCurrent : circuitPhysics.totalCurrent;
+    // ── 1. Wire-only adjacency graph ──
+    const wireAdj = new Map<string, Set<string>>();
+    const addEdge = (a: string, b: string) => {
+      if (a === b) return;
+      if (!wireAdj.has(a)) wireAdj.set(a, new Set());
+      if (!wireAdj.has(b)) wireAdj.set(b, new Set());
+      wireAdj.get(a)!.add(b);
+      wireAdj.get(b)!.add(a);
     };
 
     for (const wire of wires) {
-      if (wire.points.length < 2) { map.set(wire.id, 0); continue; }
-      const firstKey = `${wire.points[0].hx},${wire.points[0].hy}`;
-      const lastKey = `${wire.points[wire.points.length - 1].hx},${wire.points[wire.points.length - 1].hy}`;
-      const c1 = findCurrentAtEndpoint(firstKey, wire.id);
-      const c2 = findCurrentAtEndpoint(lastKey, wire.id);
-      // Min of the two endpoints → correct branch current
-      map.set(wire.id, Math.min(c1, c2));
+      for (let i = 0; i < wire.points.length - 1; i++) {
+        const a = wire.points[i], b = wire.points[i + 1];
+        if (a.hx === b.hx) {
+          const step = a.hy < b.hy ? 1 : -1;
+          for (let hy = a.hy; hy !== b.hy; hy += step)
+            addEdge(nk(a.hx, hy), nk(a.hx, hy + step));
+        } else if (a.hy === b.hy) {
+          const step = a.hx < b.hx ? 1 : -1;
+          for (let hx = a.hx; hx !== b.hx; hx += step)
+            addEdge(nk(hx, a.hy), nk(hx + step, a.hy));
+        }
+      }
     }
-    return map;
-  }, [wires, components, displayAnalysis, circuitPhysics]);
+
+    // ── 2. Net current injection at each node from components ──
+    // Convention: injection > 0 → current flows INTO the wire network at this node
+    const injection = new Map<string, number>();
+    const addInj = (key: string, val: number) => {
+      injection.set(key, (injection.get(key) ?? 0) + val);
+    };
+
+    const isBatteryType = (t: string) =>
+      t === 'battery' || t === 'battery2' || t === 'battery3';
+
+    for (const comp of components) {
+      if (comp.type === 'voltmeter') continue;
+      if (!energizedComponents.has(comp.id)) continue;
+
+      const [t0, t1] = getTerminalHalfGrid(comp);
+      const k0 = nk(t0.hx, t0.hy);
+      const k1 = nk(t1.hx, t1.hy);
+
+      if (comp.type === 'potentiometer') {
+        const wt = getWiperTerminalHalfGrid(comp);
+        if (wt) {
+          const kw = nk(wt.hx, wt.hy);
+          const v0 = circuitPhysics.nodeVoltages.get(k0);
+          const v1 = circuitPhysics.nodeVoltages.get(k1);
+          const vw = circuitPhysics.nodeVoltages.get(kw);
+          if (v0 !== undefined && v1 !== undefined && vw !== undefined) {
+            const R = getComponentResistance(comp);
+            const wPos = wiperPositions[comp.id] ?? 0.5;
+            const Rl = Math.max(R * wPos, 0.001);
+            const Rr = Math.max(R * (1 - wPos), 0.001);
+            const iL = Math.abs(v0 - vw) / Rl;
+            const iR = Math.abs(vw - v1) / Rr;
+            if (v0 >= vw) { addInj(k0, -iL); addInj(kw, +iL); }
+            else           { addInj(k0, +iL); addInj(kw, -iL); }
+            if (vw >= v1) { addInj(kw, -iR); addInj(k1, +iR); }
+            else           { addInj(kw, +iR); addInj(k1, -iR); }
+          }
+        }
+        continue;
+      }
+
+      if (comp.type === 'npn') {
+        const current = circuitPhysics.currents.get(comp.id) ?? 0;
+        if (current < 1e-12) continue;
+        const v0 = circuitPhysics.nodeVoltages.get(k0);
+        const v1 = circuitPhysics.nodeVoltages.get(k1);
+        if (v0 !== undefined && v1 !== undefined) {
+          if (v0 >= v1) { addInj(k0, -current); addInj(k1, +current); }
+          else           { addInj(k0, +current); addInj(k1, -current); }
+        }
+        continue;
+      }
+
+      const current = circuitPhysics.currents.get(comp.id) ?? 0;
+      if (current < 1e-12) continue;
+
+      if (isBatteryType(comp.type)) {
+        // Battery: terminal 0 is positive (V_nA − V_nB = E > 0)
+        // Current exits battery at terminal 0 into wire network
+        addInj(k0, +current);
+        addInj(k1, -current);
+      } else {
+        // Load (bulb, resistor, ammeter, switch, LED, …):
+        // current enters component from higher-V terminal
+        const v0 = circuitPhysics.nodeVoltages.get(k0);
+        const v1 = circuitPhysics.nodeVoltages.get(k1);
+        if (v0 !== undefined && v1 !== undefined) {
+          if (v0 >= v1) { addInj(k0, -current); addInj(k1, +current); }
+          else           { addInj(k0, +current); addInj(k1, -current); }
+        }
+      }
+    }
+
+    // ── 3. Spanning tree + post-order DFS → edge flows ──
+    const visitedNodes = new Set<string>();
+    const edgeFlow = new Map<string, number>();
+
+    for (const [startNode] of wireAdj) {
+      if (visitedNodes.has(startNode)) continue;
+
+      const parent = new Map<string, string | null>();
+      const order: string[] = [];
+      parent.set(startNode, null);
+      visitedNodes.add(startNode);
+      const queue = [startNode];
+
+      while (queue.length > 0) {
+        const n = queue.shift()!;
+        order.push(n);
+        for (const adj of (wireAdj.get(n) ?? [])) {
+          if (!visitedNodes.has(adj)) {
+            visitedNodes.add(adj);
+            parent.set(adj, n);
+            queue.push(adj);
+          }
+        }
+      }
+
+      const subtreeInj = new Map<string, number>();
+      for (let i = order.length - 1; i >= 0; i--) {
+        const n = order[i];
+        let sum = injection.get(n) ?? 0;
+        for (const adj of (wireAdj.get(n) ?? [])) {
+          if (parent.get(adj) === n) sum += subtreeInj.get(adj) ?? 0;
+        }
+        subtreeInj.set(n, sum);
+      }
+
+      for (const [node, par] of parent) {
+        if (par === null) continue;
+        edgeFlow.set(edk(node, par), Math.abs(subtreeInj.get(node) ?? 0));
+      }
+    }
+
+    // ── 4. Lokální proud na úsecích drátu (pro animaci elektronů) ──
+    const vertexFlow = new Map<string, number>();
+
+    const firstEdgeFlow = (wire: Wire, segIdx: number): number => {
+      const a = wire.points[segIdx], b = wire.points[segIdx + 1];
+      if (a.hx === b.hx) {
+        const step = a.hy < b.hy ? 1 : -1;
+        return edgeFlow.get(edk(nk(a.hx, a.hy), nk(a.hx, a.hy + step))) ?? 0;
+      } else if (a.hy === b.hy) {
+        const step = a.hx < b.hx ? 1 : -1;
+        return edgeFlow.get(edk(nk(a.hx, a.hy), nk(a.hx + step, a.hy))) ?? 0;
+      }
+      return 0;
+    };
+
+    for (const wire of wires) {
+      if (wire.points.length < 2) continue;
+      for (let i = 0; i < wire.points.length; i++) {
+        const segIdx = i < wire.points.length - 1 ? i : i - 1;
+        const vk = `${wire.id}:${i}`;
+        vertexFlow.set(vk, firstEdgeFlow(wire, segIdx));
+      }
+    }
+
+    return vertexFlow;
+  }, [showWireElectrons, wires, components, displayAnalysis, circuitPhysics, getComponentResistance, wiperPositions]);
 
   // ── Voltmeter readings: compute voltage between each voltmeter's probes ──
   // Works both in closed circuits (uses MNA nodeVoltages) and open circuits
@@ -2088,7 +2189,15 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     const newWires = [...updatedWires, { id: crypto.randomUUID(), points: clean }];
     setWires(newWires);
     pushHistory({ ...cur, wires: newWires });
-  }, [pushHistory, collectWireConnPoints]);
+
+    // Tablet: finger lift leaves the last touch position on the terminal → nearestConn
+    // stays hot (red) and the next stroke auto-starts there. Clear pointer so the user
+    // must pick a new start point explicitly.
+    if (isTouch) {
+      setMouseSvgPos(null);
+      setMouseCellPos(null);
+    }
+  }, [pushHistory, collectWireConnPoints, isTouch]);
 
   const handleMouseUp = useCallback(() => {
     // ── Wiper drop ���─
@@ -2473,35 +2582,11 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     e.stopPropagation();
     if (isViewOnly) return;
     const cur = stateRef.current;
-    const oldTerms = getTerminalHalfGrid(comp);
-    const oldWiper = getWiperTerminalHalfGrid(comp);
-    const oldBase = getBaseTerminalHalfGrid(comp);
     const newRotation = (comp.rotation + 90) % 360;
     const rotatedComp: PlacedComponent = { ...comp, rotation: newRotation };
-    const newTerms = getTerminalHalfGrid(rotatedComp);
-    const newWiper = getWiperTerminalHalfGrid(rotatedComp);
-    const newBase = getBaseTerminalHalfGrid(rotatedComp);
-    // Update wires connected to this component's terminals
-    const newWires = cur.wires.map(wire => {
-      const updated = wire.points.map(pt => {
-        if (pt.hx === oldTerms[0].hx && pt.hy === oldTerms[0].hy) return { ...newTerms[0] };
-        if (pt.hx === oldTerms[1].hx && pt.hy === oldTerms[1].hy) return { ...newTerms[1] };
-        if (oldWiper && newWiper && pt.hx === oldWiper.hx && pt.hy === oldWiper.hy) return { ...newWiper };
-        if (oldBase && newBase && pt.hx === oldBase.hx && pt.hy === oldBase.hy) return { ...newBase };
-        return pt;
-      });
-      const wasAffected = updated.some((pt, i) =>
-        pt.hx !== wire.points[i].hx || pt.hy !== wire.points[i].hy,
-      );
-      if (wasAffected) {
-        return { ...wire, points: orthoRoute(updated[0], updated[updated.length - 1]) };
-      }
-      return { ...wire, points: updated };
-    });
     const newComponents = cur.components.map(c => c.id === comp.id ? rotatedComp : c);
     setComponents(newComponents);
-    setWires(newWires);
-    pushHistory({ ...cur, components: newComponents, wires: newWires });
+    pushHistory({ ...cur, components: newComponents });
   }, [tool, pushHistory, isViewOnly]);
 
   const handleWireClick = useCallback((id: string, e: React.MouseEvent) => {
@@ -2606,17 +2691,6 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     }
     d += ` L${coords[coords.length - 1].x},${coords[coords.length - 1].y}`;
     return d;
-  };
-
-  /** Approximate pixel length of a wire (straight-line sum of half-grid segments). */
-  const wirePathLength = (pts: { hx: number; hy: number }[]) => {
-    let len = 0;
-    for (let i = 1; i < pts.length; i++) {
-      const dx = (pts[i].hx - pts[i - 1].hx) * HALF;
-      const dy = (pts[i].hy - pts[i - 1].hy) * HALF;
-      len += Math.hypot(dx, dy);
-    }
-    return Math.max(len, 1); // avoid div-by-zero
   };
 
   const getWireState = useCallback((wire: Wire): 'energized' | 'wired' | 'none' => {
@@ -2793,13 +2867,47 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
                   repeatCount: 'indefinite',
                 })}
               </path>
-              {/* Electrons in wires – disabled */}
+              {/* Electrons – per-segment animation so each section has its own speed */}
+              {showWireElectrons && !isSchemaMode && (isEnergized || isWired) && !shortCircuitWire && (() => {
+                const els: React.ReactNode[] = [];
+                for (let seg = 0; seg < w.points.length - 1; seg++) {
+                  const segFlow = wireVertexFlow.get(`${w.id}:${seg}`) ?? 0;
+                  const speed = currentToSpeed(segFlow);
+                  if (speed === 0) continue;
+                  const a = w.points[seg], b = w.points[seg + 1];
+                  const ax = a.hx * HALF, ay = a.hy * HALF;
+                  const bx = b.hx * HALF, by = b.hy * HALF;
+                  const segLen = Math.hypot(bx - ax, by - ay);
+                  if (segLen < 1) continue;
+                  const count = Math.max(1, Math.round(segLen / ELECTRON_SPACING));
+                  const dur = segLen / speed;
+                  const segPath = forward
+                    ? `M${ax},${ay} L${bx},${by}`
+                    : `M${bx},${by} L${ax},${ay}`;
+                  for (let i = 0; i < count; i++) {
+                    const begin = -(dur * i) / count;
+                    els.push(
+                      <circle key={`e-${w.id}-${seg}-${i}`} r={ELECTRON_R} fill={ELECTRON_COLOR}
+                        opacity={0.92} style={{ pointerEvents: 'none' }}>
+                        <animateMotion
+                          path={segPath}
+                          dur={`${dur}s`}
+                          begin={`${begin}s`}
+                          repeatCount="indefinite"
+                          calcMode="paced"
+                        />
+                      </circle>
+                    );
+                  }
+                }
+                return els.length > 0 ? els : null;
+              })()}
             </g>
           );
         });
         })()}
 
-        {/* ── Junction dots where 2+ wires meet ─��� */}
+        {/* ── Junction dots where 2+ wires meet ── */}
         {(() => {
           const ptData = new Map<string, { hx: number; hy: number; wireIds: string[] }>();
           for (const w of wires) {
