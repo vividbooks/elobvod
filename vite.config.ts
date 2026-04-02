@@ -3,7 +3,9 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
+// GitHub Pages: project URL je https://vividbooks.github.io/elobvod/
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? '/elobvod/' : '/',
   server: {
     // Spolehlivější než „localhost“ na některých Macích (IPv4 vs IPv6).
     host: '127.0.0.1',
@@ -26,4 +28,4 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
-})
+}))
