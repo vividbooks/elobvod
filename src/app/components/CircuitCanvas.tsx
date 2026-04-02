@@ -181,9 +181,8 @@ function orthoRoute(
 
 /**
  * Ensure every segment in a half-grid path is purely horizontal or vertical.
- * Diagonal segments get an inserted corner placed at a cell-centre coordinate
- * (odd hx, odd hy) whenever possible.
- * Applies simplifyPath afterwards to remove collinear points.
+ * Diagonal steps become an L; dominant axis of (prev→curr) picks the corner so a stroke
+ * drawn mainly downward does not jog horizontally first.
  */
 function orthogonalizePath(
   pts: { hx: number; hy: number }[],
@@ -194,10 +193,13 @@ function orthogonalizePath(
     const prev = result[result.length - 1];
     const curr = pts[i];
     if (prev.hx !== curr.hx && prev.hy !== curr.hy) {
-      // Keep the row (prev.hy is odd = cell-centre row for horizontal terminals).
-      // Use the nearest odd column for the vertical segment.
-      const cornerHx = toOdd(curr.hx);
-      result.push({ hx: cornerHx, hy: prev.hy });
+      const dhx = Math.abs(curr.hx - prev.hx);
+      const dhy = Math.abs(curr.hy - prev.hy);
+      if (dhy >= dhx) {
+        result.push({ hx: prev.hx, hy: curr.hy });
+      } else {
+        result.push({ hx: curr.hx, hy: prev.hy });
+      }
     }
     result.push(curr);
   }
@@ -299,6 +301,134 @@ function forEachWireUnitEdge(
   }
 }
 
+/** Oddělovač v interním klíči „drát × buňka“ (UUID neobsahuje \\u001f). */
+const WIRE_CELL_SEP = '\u001f';
+function wireScopedKey(wireId: string, hx: number, hy: number): string {
+  return `${wireId}${WIRE_CELL_SEP}${hx},${hy}`;
+}
+
+function pointOnWirePolyline(wire: Wire, hx: number, hy: number): boolean {
+  for (let i = 0; i < wire.points.length - 1; i++) {
+    const a = wire.points[i], b = wire.points[i + 1];
+    if (a.hx === b.hx && a.hx === hx) {
+      const lo = Math.min(a.hy, b.hy), hi = Math.max(a.hy, b.hy);
+      if (hy >= lo && hy <= hi) return true;
+    } else if (a.hy === b.hy && a.hy === hy) {
+      const lo = Math.min(a.hx, b.hx), hi = Math.max(a.hx, b.hx);
+      if (hx >= lo && hx <= hi) return true;
+    }
+  }
+  return false;
+}
+
+/** Každý uzlový bod (hx,hy) ležící na některém úseku drátu. */
+function forEachWireGridPoint(wire: Wire, cb: (hx: number, hy: number) => void) {
+  for (let i = 0; i < wire.points.length - 1; i++) {
+    const a = wire.points[i], b = wire.points[i + 1];
+    if (a.hx === b.hx) {
+      const step = a.hy < b.hy ? 1 : -1;
+      for (let hy = a.hy; hy !== b.hy; hy += step) cb(a.hx, hy);
+      cb(a.hx, b.hy);
+    } else if (a.hy === b.hy) {
+      const step = a.hx < b.hx ? 1 : -1;
+      for (let hx = a.hx; hx !== b.hx; hx += step) cb(hx, a.hy);
+      cb(b.hx, a.hy);
+    } else {
+      cb(a.hx, a.hy);
+      cb(b.hx, b.hy);
+    }
+  }
+}
+
+function createUnionFindMap() {
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    if (!parent.has(x)) parent.set(x, x);
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    let c = x;
+    while (c !== r) {
+      const n = parent.get(c)!;
+      parent.set(c, r);
+      c = n;
+    }
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  return { parent, find, union };
+}
+
+/**
+ * Elektrické spojení drátů jen tam, kde se polyline fyzicky dotýká:
+ * – společný zapsaný vrchol (T, konec, roh),
+ * – svorka součástky na úseku (připojení na konkrétní drát).
+ * Průsečík úseků bez společného vrcholu = vizuální křížení bez spojení.
+ */
+function mergeJunctionAwareWiresIntoUF(
+  wires: Wire[],
+  components: PlacedComponent[],
+  nodeKey: (hx: number, hy: number) => string,
+  uf: { find: (s: string) => string; union: (a: string, b: string) => void },
+) {
+  const { union } = uf;
+  for (const wire of wires) {
+    const id = wire.id;
+    for (let i = 0; i < wire.points.length - 1; i++) {
+      const a = wire.points[i], b = wire.points[i + 1];
+      if (a.hx === b.hx) {
+        const step = a.hy < b.hy ? 1 : -1;
+        for (let hy = a.hy; hy !== b.hy; hy += step) {
+          union(wireScopedKey(id, a.hx, hy), wireScopedKey(id, a.hx, hy + step));
+        }
+      } else if (a.hy === b.hy) {
+        const step = a.hx < b.hx ? 1 : -1;
+        for (let hx = a.hx; hx !== b.hx; hx += step) {
+          union(wireScopedKey(id, hx, a.hy), wireScopedKey(id, hx + step, a.hy));
+        }
+      } else {
+        union(wireScopedKey(id, a.hx, a.hy), wireScopedKey(id, b.hx, b.hy));
+      }
+    }
+  }
+  const atVertex = new Map<string, Set<string>>();
+  for (const w of wires) {
+    for (const p of w.points) {
+      const k = `${p.hx},${p.hy}`;
+      if (!atVertex.has(k)) atVertex.set(k, new Set());
+      atVertex.get(k)!.add(w.id);
+    }
+  }
+  for (const [k, ids] of atVertex) {
+    const [hx, hy] = k.split(',').map(Number);
+    const g = nodeKey(hx, hy);
+    for (const wid of ids) union(g, wireScopedKey(wid, hx, hy));
+  }
+  for (const comp of components) {
+    if (comp.type === 'voltmeter') continue;
+    const pts: { hx: number; hy: number }[] = [];
+    const [t0, t1] = getTerminalHalfGrid(comp);
+    pts.push(t0, t1);
+    if (comp.type === 'potentiometer') {
+      const wt = getWiperTerminalHalfGrid(comp);
+      if (wt) pts.push(wt);
+    } else if (comp.type === 'npn') {
+      const bt = getBaseTerminalHalfGrid(comp);
+      if (bt) pts.push(bt);
+    }
+    for (const t of pts) {
+      const g = nodeKey(t.hx, t.hy);
+      for (const w of wires) {
+        if (pointOnWirePolyline(w, t.hx, t.hy)) {
+          union(g, wireScopedKey(w.id, t.hx, t.hy));
+        }
+      }
+    }
+  }
+}
+
 /**
  * Find a wire segment that passes through a grid cell, allowing us to
  * insert a component there by splitting the wire.
@@ -389,17 +519,21 @@ function runTopologyCheck(
   effectiveSwitchStates: Record<string, boolean>,
 ): { activeComponents: Set<string>; activeNodes: Set<string> } {
   const nodeKey = (hx: number, hy: number) => `${hx},${hy}`;
+  const ufT = createUnionFindMap();
+  mergeJunctionAwareWiresIntoUF(wires, components, nodeKey, ufT);
+  const norm = (s: string) => ufT.find(s);
+
   type Edge = { to: string; compId?: string };
   const adj = new Map<string, Edge[]>();
 
   const addEdge = (a: string, b: string, compId?: string) => {
-    if (!adj.has(a)) adj.set(a, []);
-    if (!adj.has(b)) adj.set(b, []);
-    adj.get(a)!.push({ to: b, compId });
-    adj.get(b)!.push({ to: a, compId });
+    const na = norm(a), nb = norm(b);
+    if (na === nb) return;
+    if (!adj.has(na)) adj.set(na, []);
+    if (!adj.has(nb)) adj.set(nb, []);
+    adj.get(na)!.push({ to: nb, compId });
+    adj.get(nb)!.push({ to: na, compId });
   };
-
-  forEachWireUnitEdge(wires, nodeKey, (k1, k2) => addEdge(k1, k2));
 
   for (const comp of components) {
     if (comp.type === 'voltmeter') continue; // voltmeter has infinite impedance
@@ -431,13 +565,15 @@ function runTopologyCheck(
   }
 
   const bfsWithout = (start: string, excludeId: string): Set<string> => {
-    const visited = new Set<string>([start]);
-    const q = [start];
+    const s0 = norm(start);
+    const visited = new Set<string>([s0]);
+    const q = [s0];
     while (q.length > 0) {
       const curr = q.shift()!;
       for (const { to, compId } of (adj.get(curr) || [])) {
         if (compId === excludeId) continue;
-        if (!visited.has(to)) { visited.add(to); q.push(to); }
+        const toN = norm(to);
+        if (!visited.has(toN)) { visited.add(toN); q.push(toN); }
       }
     }
     return visited;
@@ -453,20 +589,20 @@ function runTopologyCheck(
     const en = nodeKey(t1.hx, t1.hy);
 
     const vA = bfsWithout(sn, batt.id);
-    if (!vA.has(en)) continue;
+    if (!vA.has(norm(en))) continue;
 
     const vB = bfsWithout(en, batt.id);
     for (const n of vA) { if (vB.has(n)) activeNodes.add(n); }
-    activeNodes.add(sn);
-    activeNodes.add(en);
+    activeNodes.add(norm(sn));
+    activeNodes.add(norm(en));
     activeComponents.add(batt.id);
 
     for (const comp of components) {
       if (comp.id === batt.id) continue;
       if (comp.type === 'switch' && !effectiveSwitchStates[comp.id]) continue;
       const [ct0, ct1] = getTerminalHalfGrid(comp);
-      const ca = nodeKey(ct0.hx, ct0.hy);
-      const cb = nodeKey(ct1.hx, ct1.hy);
+      const ca = norm(nodeKey(ct0.hx, ct0.hy));
+      const cb = norm(nodeKey(ct1.hx, ct1.hy));
       if ((vA.has(ca) && vB.has(cb)) || (vA.has(cb) && vB.has(ca))) {
         activeComponents.add(comp.id);
       }
@@ -488,25 +624,32 @@ function leafTrimNodes(
   openCircuitIds?: Set<string>,
 ): Set<string> {
   const nodeKey = (hx: number, hy: number) => `${hx},${hy}`;
-  const adj = new Map<string, Set<string>>();
+  const ufL = createUnionFindMap();
+  mergeJunctionAwareWiresIntoUF(wires, components, nodeKey, ufL);
+  const norm = (s: string) => ufL.find(s);
 
+  // Multigraf: baterie i žárovka mohou spojovat stejný pár superuzlů — v jednoduchém grafu
+  // by oba měly stupeň 1 a smyčka by se celá ořezala (žádný proud).
+  const adj = new Map<string, Map<string, number>>();
   const addEdge = (a: string, b: string) => {
-    if (!adj.has(a)) adj.set(a, new Set());
-    if (!adj.has(b)) adj.set(b, new Set());
-    adj.get(a)!.add(b);
-    adj.get(b)!.add(a);
+    const na = norm(a), nb = norm(b);
+    if (na === nb) return;
+    const bump = (u: string, v: string) => {
+      if (!adj.has(u)) adj.set(u, new Map());
+      const m = adj.get(u)!;
+      m.set(v, (m.get(v) ?? 0) + 1);
+    };
+    bump(na, nb);
+    bump(nb, na);
   };
 
-  forEachWireUnitEdge(wires, nodeKey, (k1, k2) => addEdge(k1, k2));
-
-  // Include ALL components (battery forms the closing edge of the loop)
+  // Pouze hrany součástek – vodivost drátů je v norm() přes mergeJunctionAwareWiresIntoUF
   for (const comp of components) {
     if (comp.type === 'voltmeter') continue; // voltmeter has infinite impedance
     if (comp.type === 'switch' && !effectiveSwitchStates[comp.id]) continue;
     if (openCircuitIds?.has(comp.id)) continue; // broken bulb / blocked LED = open circuit
     const [t0, t1] = getTerminalHalfGrid(comp);
     if (comp.type === 'potentiometer') {
-      // Three-terminal: t0↔wiper and wiper↔t1
       const wt = getWiperTerminalHalfGrid(comp);
       if (wt) {
         const wk = nodeKey(wt.hx, wt.hy);
@@ -516,7 +659,6 @@ function leafTrimNodes(
         addEdge(nodeKey(t0.hx, t0.hy), nodeKey(t1.hx, t1.hy));
       }
     } else if (comp.type === 'npn') {
-      // NPN: C(t0)↔E(t1) main path, B(base)↔E(t1) control path
       const bt = getBaseTerminalHalfGrid(comp);
       addEdge(nodeKey(t0.hx, t0.hy), nodeKey(t1.hx, t1.hy)); // C-E
       if (bt) {
@@ -527,11 +669,14 @@ function leafTrimNodes(
     }
   }
 
-  // Track mutable degrees
+  const sumDeg = (u: string) => {
+    let s = 0;
+    for (const c of (adj.get(u) ?? new Map()).values()) s += c;
+    return s;
+  };
   const degree = new Map<string, number>();
-  for (const [node, neighbors] of adj.entries()) degree.set(node, neighbors.size);
+  for (const u of adj.keys()) degree.set(u, sumDeg(u));
 
-  // Queue all leaves (degree <= 1)
   const removed = new Set<string>();
   const queue: string[] = [];
   for (const [node, deg] of degree.entries()) { if (deg <= 1) queue.push(node); }
@@ -539,19 +684,51 @@ function leafTrimNodes(
   while (queue.length > 0) {
     const node = queue.shift()!;
     if (removed.has(node)) continue;
-    if ((degree.get(node) ?? 0) > 1) continue; // may have been updated
+    if ((degree.get(node) ?? 0) > 1) continue;
     removed.add(node);
-    for (const neighbor of (adj.get(node) ?? new Set())) {
-      if (removed.has(neighbor)) continue;
-      const nd = (degree.get(neighbor) ?? 0) - 1;
-      degree.set(neighbor, nd);
-      if (nd <= 1) queue.push(neighbor);
+    const nbrs = adj.get(node);
+    if (!nbrs) continue;
+    for (const [neighbor, c] of nbrs) {
+      if (removed.has(neighbor) || c <= 0) continue;
+      degree.set(neighbor, (degree.get(neighbor) ?? 0) - c);
+      const back = adj.get(neighbor);
+      if (back) {
+        const bc = back.get(node) ?? 0;
+        if (bc <= c) back.delete(node);
+        else back.set(node, bc - c);
+      }
+      if ((degree.get(neighbor) ?? 0) <= 1) queue.push(neighbor);
     }
+    adj.delete(node);
   }
 
-  const result = new Set<string>();
-  for (const node of adj.keys()) { if (!removed.has(node)) result.add(node); }
-  return result;
+  const survivingReps = new Set<string>();
+  for (const node of adj.keys()) { if (!removed.has(node)) survivingReps.add(node); }
+
+  const out = new Set<string>();
+  for (const w of wires) {
+    forEachWireGridPoint(w, (hx, hy) => {
+      const r = ufL.find(wireScopedKey(w.id, hx, hy));
+      if (survivingReps.has(r)) out.add(nodeKey(hx, hy));
+    });
+  }
+  for (const comp of components) {
+    if (comp.type === 'voltmeter') continue;
+    const [t0, t1] = getTerminalHalfGrid(comp);
+    const pts = [t0, t1];
+    if (comp.type === 'potentiometer') {
+      const wt = getWiperTerminalHalfGrid(comp);
+      if (wt) pts.push(wt);
+    } else if (comp.type === 'npn') {
+      const bt = getBaseTerminalHalfGrid(comp);
+      if (bt) pts.push(bt);
+    }
+    for (const t of pts) {
+      const k = nodeKey(t.hx, t.hy);
+      if (survivingReps.has(ufL.find(k))) out.add(k);
+    }
+  }
+  return out;
 }
 
 function analyzeCircuit(
@@ -846,51 +1023,39 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
 
     const nodeVoltages = new Map<string, number>();
 
-    if (energizedComponents.size === 0) {
-      return { totalVoltage: 0, totalResistance: 0, totalCurrent: 0, currents, nodeVoltages, blockedLedIds: new Set<string>(), blockedNpnIds: new Set<string>(), npnDebug: new Map() };
-    }
-
     const nodeKey = (hx: number, hy: number) => `${hx},${hy}`;
 
-    // ── Union-Find: merge wire-connected half-grid points into super-nodes ─���
-    const ufParent = new Map<string, string>();
-    const ufFind = (x: string): string => {
-      if (!ufParent.has(x)) ufParent.set(x, x);
-      let r = x;
-      while (ufParent.get(r) !== r) r = ufParent.get(r)!;
-      let c = x;
-      while (c !== r) { const nx = ufParent.get(c)!; ufParent.set(c, r); c = nx; }
-      return r;
-    };
-    const ufUnion = (a: string, b: string) => {
-      const ra = ufFind(a), rb = ufFind(b);
-      if (ra !== rb) ufParent.set(ra, rb);
-    };
+    // ── Union-Find: stejný model jako leafTrim – spoj jen na vrcholech / svorkách, ne při křížení ──
+    const ufM = createUnionFindMap();
+    mergeJunctionAwareWiresIntoUF(wires, components, nodeKey, ufM);
+    const ufParent = ufM.parent;
+    const ufFind = ufM.find;
+    const ufUnion = ufM.union;
 
-    // Merge all wire segments (expanded to unit steps so mid-segment T-junctions work)
-    forEachWireUnitEdge(wires, nodeKey, (k1, k2) => ufUnion(k1, k2));
-
-    // ── Check for short-circuited voltage sources (terminals in same super-node) ──
     const isSourceType = (t: ComponentType) =>
       t === 'battery' || t === 'battery2' || t === 'battery3';
 
+    // Zkrat zdroje: oba póly ve stejném superuzlu. Leaf-trim při čistém zkratu neudělá hranu baterie
+    // (norm(t0) === norm(t1)), takže energizedComponents může být prázdný — musíme kontrolovat vždy.
     let hasShortCircuit = false;
-    let totalVoltageSum = 0;
+    let shortedSourceVoltageSum = 0;
     for (const comp of components) {
-      if (!energizedComponents.has(comp.id)) continue;
-      if (isSourceType(comp.type)) {
-        totalVoltageSum += getComponentVoltage(comp);
-        const [t0, t1] = getTerminalHalfGrid(comp);
-        if (ufFind(nodeKey(t0.hx, t0.hy)) === ufFind(nodeKey(t1.hx, t1.hy))) {
-          hasShortCircuit = true;
-        }
+      if (!isSourceType(comp.type)) continue;
+      const [t0, t1] = getTerminalHalfGrid(comp);
+      if (ufFind(nodeKey(t0.hx, t0.hy)) === ufFind(nodeKey(t1.hx, t1.hy))) {
+        hasShortCircuit = true;
+        shortedSourceVoltageSum += getComponentVoltage(comp);
       }
     }
     if (hasShortCircuit) {
       for (const comp of components) {
         currents.set(comp.id, energizedComponents.has(comp.id) ? 999 : 0);
       }
-      return { totalVoltage: totalVoltageSum, totalResistance: 0, totalCurrent: 999, currents, nodeVoltages, blockedLedIds: new Set<string>(), blockedNpnIds: new Set<string>(), npnDebug: new Map() };
+      return { totalVoltage: shortedSourceVoltageSum, totalResistance: 0, totalCurrent: 999, currents, nodeVoltages, blockedLedIds: new Set<string>(), blockedNpnIds: new Set<string>(), npnDebug: new Map() };
+    }
+
+    if (energizedComponents.size === 0) {
+      return { totalVoltage: 0, totalResistance: 0, totalCurrent: 0, currents, nodeVoltages, blockedLedIds: new Set<string>(), blockedNpnIds: new Set<string>(), npnDebug: new Map() };
     }
 
     // ── Collect super-nodes from energized component terminals ──
@@ -1203,6 +1368,15 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       if (idx !== undefined && idx < N) {
         nodeVoltages.set(node, x[idx]);
       }
+    }
+    for (const w of wires) {
+      forEachWireGridPoint(w, (hx, hy) => {
+        const rep = ufFind(wireScopedKey(w.id, hx, hy));
+        const idx = nodeIdx.get(rep);
+        if (idx !== undefined && idx < N) {
+          nodeVoltages.set(nodeKey(hx, hy), x[idx]);
+        }
+      });
     }
 
     // ── Výpočet proudů jednotlivých součástek ──
@@ -1655,31 +1829,13 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     const readings = new Map<string, number>();
     const nv = circuitPhysics.nodeVoltages;
 
-    // ── Build union-find over ALL wires (regardless of closed circuit) ──
-    const ufP = new Map<string, string>();
-    const ufF = (x: string): string => {
-      if (!ufP.has(x)) ufP.set(x, x);
-      let r = x;
-      while (ufP.get(r) !== r) r = ufP.get(r)!;
-      let c = x;
-      while (c !== r) { const n = ufP.get(c)!; ufP.set(c, r); c = n; }
-      return r;
-    };
-    const ufU = (a: string, b: string) => {
-      const ra = ufF(a), rb = ufF(b);
-      if (ra !== rb) ufP.set(ra, rb);
-    };
+    // ── Union-find jako v MNA: dráty se dotýkají jen na vrcholech / svorkách ──
     const nk = (hx: number, hy: number) => `${hx},${hy}`;
+    const ufVm = createUnionFindMap();
+    mergeJunctionAwareWiresIntoUF(wires, components, nk, ufVm);
+    const ufF = ufVm.find;
+    const ufU = ufVm.union;
 
-    // Union all wire segments
-    for (const wire of wires) {
-      for (let i = 0; i < wire.points.length - 1; i++) {
-        ufU(
-          nk(wire.points[i].hx, wire.points[i].hy),
-          nk(wire.points[i + 1].hx, wire.points[i + 1].hy),
-        );
-      }
-    }
     // Union through non-source, non-voltmeter components (they are conductors)
     for (const comp of components) {
       if (comp.type === 'voltmeter') continue;
@@ -1735,19 +1891,9 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     // also checking if it lies on a wire segment (not just endpoints).
     const findGroup = (hx: number, hy: number): string | null => {
       const key = nk(hx, hy);
-      if (ufP.has(key)) return ufF(key);
-      // Check if point lies on a wire segment
+      if (ufVm.parent.has(key)) return ufF(key);
       for (const wire of wires) {
-        for (let i = 0; i < wire.points.length - 1; i++) {
-          const a = wire.points[i], b = wire.points[i + 1];
-          if (a.hx === b.hx && a.hx === hx) {
-            const minHy = Math.min(a.hy, b.hy), maxHy = Math.max(a.hy, b.hy);
-            if (hy >= minHy && hy <= maxHy) return ufF(nk(a.hx, a.hy));
-          } else if (a.hy === b.hy && a.hy === hy) {
-            const minHx = Math.min(a.hx, b.hx), maxHx = Math.max(a.hx, b.hx);
-            if (hx >= minHx && hx <= maxHx) return ufF(nk(a.hx, a.hy));
-          }
-        }
+        if (pointOnWirePolyline(wire, hx, hy)) return ufF(wireScopedKey(wire.id, hx, hy));
       }
       return null;
     };
@@ -1871,11 +2017,16 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
 
         if (a.hx === b.hx) {
           const step = a.hy < b.hy ? 1 : -1;
-          for (let hy = a.hy + step; hy !== b.hy; hy += step) add(a.hx, hy);
+          for (let hy = a.hy + step; hy !== b.hy; hy += step) {
+            // Jen středy „řádků“ buněk (liché hy), ne každý půlkrok sítě
+            if (hy % 2 !== 0) add(a.hx, hy);
+          }
           add(b.hx, b.hy);
         } else if (a.hy === b.hy) {
           const step = a.hx < b.hx ? 1 : -1;
-          for (let hx = a.hx + step; hx !== b.hx; hx += step) add(hx, a.hy);
+          for (let hx = a.hx + step; hx !== b.hx; hx += step) {
+            if (hx % 2 !== 0) add(hx, a.hy);
+          }
           add(b.hx, b.hy);
         } else {
           // Should not happen after orthogonalization, but keep endpoints safe.
@@ -1900,7 +2051,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     return pts;
   }, [components]);
 
-  // ── Snap při kreslení: svorky + všechny body podél drátů (vrcholy i střed úseku) ──
+  // ── Snap při kreslení: svorky + body na drátech jen ve středech buněk (liché hx/hy podél úseku) + vrcholy polyline ──
   const wireSnapPoints = useMemo(() => {
     return collectWireConnPoints(wires);
   }, [wires, collectWireConnPoints]);
