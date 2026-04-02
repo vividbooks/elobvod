@@ -374,8 +374,17 @@ function AmmeterTile({ isEnergized = false, electronForward = true, current = 0,
   );
 }
 
+/** Formát napětí na displeji voltmetru (čárka jako desetinný separátor), včetně záporných hodnot. */
+function formatVoltmeterReading(v: number): string {
+  if (Math.abs(v) <= 0.001) return '0';
+  const sign = v < 0 ? '-' : '';
+  return `${sign}${Math.abs(v).toFixed(2).replace('.', ',')}`;
+}
+
 /* ══ VOLTMETR – samostatný komponent s unikátními clipPath ID ══ */
 function VoltmeterTile({ voltage = 0, rotation = 0 }: { voltage?: number; rotation?: number }) {
+  // 0…24 V → ručička −20°…+20°; záporná napětí symetricky doleva (do −60° při −24 V)
+  const needleDeg = Math.max(-60, Math.min(60, -20 + (voltage / 24) * 40));
   const uid = React.useId().replace(/:/g, '');
   const cp1 = `vcp1_${uid}`;
   const cp2 = `vcp2_${uid}`;
@@ -445,8 +454,8 @@ function VoltmeterTile({ voltage = 0, rotation = 0 }: { voltage?: number; rotati
         <text fill="#1d1d1b" fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="16" fontWeight="700"
           x="84" y="38" textAnchor="middle">V</text>
 
-        {/* Ukazovátko – ručička – úhel dle napětí (0 V = −20°, 24 V = +20°) */}
-        <g transform={`rotate(${-20 + Math.min(1, Math.abs(voltage) / 24) * 40} 83.854 52.4269)`}>
+        {/* Ukazovátko – ručička – úhel dle napětí včetně záporného (±24 V plná výchylka) */}
+        <g transform={`rotate(${needleDeg} 83.854 52.4269)`}>
           <line fill="none" stroke="#0d9488" strokeWidth="2.4818" strokeLinecap="round" strokeLinejoin="round"
             x1="83.854" y1="52.4269" x2="93.1752" y2="12.4678"/>
           <path fill="#2b2b2b"
@@ -460,9 +469,9 @@ function VoltmeterTile({ voltage = 0, rotation = 0 }: { voltage?: number; rotati
           x1="64.6293" y1="10.3604" x2="66.8551" y2="15.3821"/>
       </g>
 
-      {/* Digitální displej napětí */}
+      {/* Digitální displej napětí (+ u červené sondy, − u černé → záporný údaj při prohození polarit) */}
       <text fill="#0d9488" textAnchor="middle" x="68" y="140">
-        <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="36" fontWeight="500">{Math.abs(voltage) > 0.001 ? `${Math.abs(voltage).toFixed(2).replace('.', ',')} ` : '0 '}</tspan>
+        <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="36" fontWeight="500">{`${formatVoltmeterReading(voltage)} `}</tspan>
         <tspan fontFamily="Arial, sans-serif" fontSize="32" fontWeight="700">V</tspan>
       </text>
 
@@ -1474,7 +1483,7 @@ function SchemaSymbol({ type, isOn, bulbState, current = 0, voltage, resistance,
           <line x1="12" y1="0" x2={L} y2="0" stroke={C} strokeWidth="2" />
           {voltage !== undefined && Math.abs(voltage) > 0.001 && (
             <text x="0" y="20" textAnchor="middle" fontSize="8" fill="#216de8" fontFamily="monospace" fontWeight="bold">
-              {Math.abs(voltage).toFixed(2).replace('.', ',')} V
+              {formatVoltmeterReading(voltage)} V
             </text>
           )}
         </g>

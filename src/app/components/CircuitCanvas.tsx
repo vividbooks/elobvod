@@ -2462,6 +2462,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
               probe2: { pos: null },
             },
           }));
+          setTool('select');
         } else {
           // Check if a wire passes through this cell – if so, split it
           const hit = findWireThroughCell(cell.cx, cell.cy, cur.wires);
@@ -2489,7 +2490,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
         }
       }
     }
-  }, [tool, isComponentTool, snapCell, pushHistory]);
+  }, [tool, isComponentTool, snapCell, pushHistory, setTool]);
 
   const handleCompClick = useCallback((comp: PlacedComponent, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -2524,6 +2525,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
             probe2: { pos: null },
           },
         }));
+        setTool('select');
       }
       pushHistory({ components: newComponents, wires: cur.wires, switchStates: newSwitch, bulbStates: newBulb });
       return;
@@ -2574,7 +2576,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
         return { ...prev, [comp.id]: next };
       });
     }
-  }, [tool, pushHistory, isViewOnly]);
+  }, [tool, pushHistory, isViewOnly, isComponentTool, setTool]);
 
   // ── Right-click to rotate component by 90° (especially useful for potentiometer wiper direction) ──
   const handleCompContextMenu = useCallback((comp: PlacedComponent, e: React.MouseEvent) => {
