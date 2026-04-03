@@ -6,6 +6,8 @@ import type { ViewMode } from './ComponentSvg';
 const BG = '#edecf0';
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4.0;
+/** Vnitřní zoom při startu / „výchozí“ – v UI se zobrazí jako 100 %. */
+const DEFAULT_ZOOM = 2;
 
 interface Props {
   viewMode: ViewMode;
@@ -92,7 +94,7 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
 
         {/* Fit view */}
         <button
-          onClick={() => onZoomChange(2)}
+          onClick={() => onZoomChange(DEFAULT_ZOOM)}
           title="Výchozí zoom"
           className="w-9 h-9 rounded-xl flex items-center justify-center text-zinc-500 hover:bg-white/50 transition-colors cursor-pointer"
         >
@@ -100,8 +102,8 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
         </button>
 
         {/* Zoom label */}
-        <div className="text-[11px] text-zinc-400 min-w-[38px] text-center tabular-nums">
-          {Math.round(zoom * 100)}%
+        <div className="text-[11px] text-zinc-400 min-w-[42px] text-center tabular-nums">
+          {Math.round((zoom / DEFAULT_ZOOM) * 100)} %
         </div>
       </div>
 

@@ -340,6 +340,82 @@ function forEachWireGridPoint(wire: Wire, cb: (hx: number, hy: number) => void) 
   }
 }
 
+function forEachHalfGridOnPolyline(
+  points: { hx: number; hy: number }[],
+  cb: (hx: number, hy: number) => void,
+) {
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (a.hx === b.hx) {
+      const step = a.hy < b.hy ? 1 : -1;
+      for (let hy = a.hy; hy !== b.hy; hy += step) cb(a.hx, hy);
+      cb(a.hx, b.hy);
+    } else if (a.hy === b.hy) {
+      const step = a.hx < b.hx ? 1 : -1;
+      for (let hx = a.hx; hx !== b.hx; hx += step) cb(hx, a.hy);
+      cb(b.hx, a.hy);
+    } else {
+      cb(a.hx, a.hy);
+      cb(b.hx, b.hy);
+    }
+  }
+}
+
+function distPointToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+  const abLen2 = abx * abx + aby * aby;
+  if (abLen2 < 1e-12) return Math.hypot(apx, apy);
+  let t = (apx * abx + apy * aby) / abLen2;
+  t = Math.max(0, Math.min(1, t));
+  const qx = ax + t * abx;
+  const qy = ay + t * aby;
+  return Math.hypot(px - qx, py - qy);
+}
+
+/** True when (hx,hy) lies inside the drawn tile rect and not on allowed connector corridors (main terminals / aux). */
+function isHalfGridPointUnderComponentTile(comp: PlacedComponent, hx: number, hy: number): boolean {
+  const px = hx * HALF;
+  const py = hy * HALF;
+  const tileL = comp.cx * GRID_SIZE + TILE_INSET;
+  const tileT = comp.cy * GRID_SIZE + TILE_INSET;
+  const tileR = comp.cx * GRID_SIZE + GRID_SIZE - TILE_INSET;
+  const tileB = comp.cy * GRID_SIZE + GRID_SIZE - TILE_INSET;
+  if (px < tileL || px > tileR || py < tileT || py > tileB) return false;
+
+  const nearMain = 15;
+  const [t0, t1] = getConnPoints(comp);
+  if (distPointToSegment(px, py, t0.x, t0.y, t1.x, t1.y) <= nearMain) return false;
+
+  const nearAux = 22;
+  const wp = getWiperConnPoint(comp);
+  if (wp && Math.hypot(px - wp.x, py - wp.y) <= nearAux) return false;
+  const bp = getBaseConnPoint(comp);
+  if (bp && Math.hypot(px - bp.x, py - bp.y) <= nearAux) return false;
+
+  return true;
+}
+
+function wirePolylinePassesUnderComponentTile(
+  points: { hx: number; hy: number }[],
+  components: PlacedComponent[],
+): boolean {
+  let bad = false;
+  forEachHalfGridOnPolyline(points, (hx, hy) => {
+    if (bad) return;
+    for (const comp of components) {
+      if (isHalfGridPointUnderComponentTile(comp, hx, hy)) {
+        bad = true;
+        return;
+      }
+    }
+  });
+  return bad;
+}
+
 function createUnionFindMap() {
   const parent = new Map<string, string>();
   const find = (x: string): string => {
@@ -2312,6 +2388,11 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     const clean = orthogonalizePath(simplifyPath(snapped));
     if (clean.length < 2) return;
 
+    if (wirePolylinePassesUnderComponentTile(clean, cur.components)) {
+      toast.error('Drát nesmí vést přes součástku. Objeď ji po obvodu mřížky.');
+      return;
+    }
+
     // Insert junction points into existing wires so Union-Find sees the T-connection.
     let updatedWires = cur.wires;
     const junctions = [clean[0], clean[clean.length - 1]];
@@ -2804,7 +2885,10 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
             snapPt,
             ...wire.points.slice(segmentIndex + 1)
           ];
-          
+          if (wirePolylinePassesUnderComponentTile(newPoints, cur.components)) {
+            toast.error('Drát nesmí vést přes součástku. Objeď ji po obvodu mřížky.');
+            return;
+          }
           const newWires = cur.wires.map(w => w.id === id ? { ...w, points: newPoints } : w);
           setWires(newWires);
           pushHistory({ ...cur, wires: newWires });
