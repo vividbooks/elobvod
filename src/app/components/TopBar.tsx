@@ -22,7 +22,7 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
   const [showInfo, setShowInfo] = useState(false);
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex shrink-0 flex-nowrap items-center gap-1">
       {/* View-only badge */}
       {isViewOnly && (
         <div

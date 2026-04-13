@@ -2190,24 +2190,32 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     return collectWireConnPoints(wires);
   }, [wires, collectWireConnPoints]);
 
+  /** Větší tolerance na dotyku (prst / interaktivní tabule). */
+  const wireEndpointSnapDist = isTouch ? CONN_SNAP_DIST * 1.5 : CONN_SNAP_DIST;
+
+  /** Nejblížší svorka / bod na drátu k dané pozici v SVG (pro začátek tahu bez „hover“ stavu). */
+  const nearestConnAt = useCallback(
+    (svgPos: { x: number; y: number } | null): ConnPoint | null => {
+      if (!svgPos || tool !== 'wire') return null;
+      let best: ConnPoint | null = null;
+      let bestDist = wireEndpointSnapDist;
+      for (const cp of connPoints) {
+        const d = Math.hypot(cp.x - svgPos.x, cp.y - svgPos.y);
+        if (d < bestDist) { bestDist = d; best = cp; }
+      }
+      for (const wp of wireSnapPoints) {
+        const d = Math.hypot(wp.x - svgPos.x, wp.y - svgPos.y);
+        if (d < bestDist) { bestDist = d; best = wp; }
+      }
+      return best;
+    },
+    [connPoints, wireSnapPoints, tool, wireEndpointSnapDist],
+  );
+
   const nearestConn = useMemo(() => {
     if (!mouseSvgPos || tool !== 'wire') return null;
-    let best: ConnPoint | null = null;
-    let bestDist = CONN_SNAP_DIST;
-    
-    // Pick the closest snap target (components and wires equally).
-    for (const cp of connPoints) {
-      const d = Math.hypot(cp.x - mouseSvgPos.x, cp.y - mouseSvgPos.y);
-      if (d < bestDist) { bestDist = d; best = cp; }
-    }
-
-    for (const wp of wireSnapPoints) {
-      const d = Math.hypot(wp.x - mouseSvgPos.x, wp.y - mouseSvgPos.y);
-      if (d < bestDist) { bestDist = d; best = wp; }
-    }
-    
-    return best;
-  }, [mouseSvgPos, connPoints, wireSnapPoints, tool]);
+    return nearestConnAt(mouseSvgPos);
+  }, [mouseSvgPos, tool, nearestConnAt]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -2306,12 +2314,13 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       if (!pos) return;
       isDrawingRef.current = true;
       // ── Snap wire START to nearest terminal so topology always connects ──
-      const startPos = nearestConn ? { x: nearestConn.x, y: nearestConn.y } : pos;
+      const snap0 = nearestConnAt(pos);
+      const startPos = snap0 ? { x: snap0.x, y: snap0.y } : pos;
       freehandPtsRef.current = [startPos];
       freehandPathRef.current?.setAttribute('points', `${startPos.x},${startPos.y}`);
       freehandPathRef.current?.setAttribute('display', 'block');
     }
-  }, [tool, clientToSvg, panOffset, nearestConn]);
+  }, [tool, clientToSvg, panOffset, nearestConnAt]);
 
   const handleCompMouseDown = useCallback((comp: PlacedComponent, e: React.MouseEvent) => {
     if (tool !== 'select') return;
@@ -2405,7 +2414,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
 
     const snapEndpointRequired = (pt: { x: number; y: number }): ConnPoint | null => {
       let best: ConnPoint | null = null;
-      let bestDist = CONN_SNAP_DIST;
+      let bestDist = wireEndpointSnapDist;
       for (const cp of allConns) {
         const d = Math.hypot(cp.x - pt.x, cp.y - pt.y);
         if (d < bestDist) { bestDist = d; best = cp; }
@@ -2487,7 +2496,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       setMouseSvgPos(null);
       setMouseCellPos(null);
     }
-  }, [pushHistory, collectWireConnPoints, isTouch]);
+  }, [pushHistory, collectWireConnPoints, isTouch, wireEndpointSnapDist]);
 
   const handleMouseUp = useCallback(() => {
     // ── Wiper drop ���─
@@ -2605,12 +2614,15 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       const pos = clientToSvg(clientX, clientY);
       if (!pos) return;
       isDrawingRef.current = true;
-      const startPos = nearestConn ? { x: nearestConn.x, y: nearestConn.y } : pos;
+      const snap0 = nearestConnAt(pos);
+      const startPos = snap0 ? { x: snap0.x, y: snap0.y } : pos;
       freehandPtsRef.current = [startPos];
       freehandPathRef.current?.setAttribute('points', `${startPos.x},${startPos.y}`);
       freehandPathRef.current?.setAttribute('display', 'block');
+      setMouseSvgPos(pos);
+      setMouseCellPos(snapCell(clientX, clientY));
     }
-  }, [tool, clientToSvg, panOffset, nearestConn, zoom]);
+  }, [tool, clientToSvg, panOffset, nearestConnAt, zoom, snapCell]);
 
   const handleSvgTouchMove = useCallback((e: React.TouchEvent<SVGSVGElement>) => {
     e.preventDefault(); // block scroll / native zoom on older Android/Safari

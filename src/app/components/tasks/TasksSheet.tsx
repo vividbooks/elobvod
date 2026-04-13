@@ -1,0 +1,250 @@
+import { useState, useRef } from 'react';
+import { ImagePlus, X } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '../ui/sheet';
+import { Textarea } from '../ui/textarea';
+import { Button } from '../ui/button';
+import { Label } from '../ui/label';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { CIRCUIT_ASSIGNMENTS_TABLE } from '@/lib/circuitTables';
+import { assignmentPublicUrl } from '../../utils/appUrl';
+import { ShareModal } from '../ShareModal';
+import { toast } from 'sonner';
+
+const MAX_IMAGE_BYTES = 1_500_000;
+
+function formatDbError(e: unknown): string {
+  if (!e || typeof e !== "object") return "Neznámá chyba";
+  const o = e as {
+    message?: string;
+    details?: string;
+    hint?: string;
+    code?: string;
+    statusCode?: string;
+  };
+  const parts = [o.message, o.details, o.hint, o.code ? `(${o.code})` : ""].filter(Boolean);
+  return parts.length ? parts.join(" · ") : JSON.stringify(e).slice(0, 200);
+}
+
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function TasksSheet({ open, onOpenChange }: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [instruction, setInstruction] = useState('');
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageData, setImageData] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [createdUrl, setCreatedUrl] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setInstruction('');
+    setImagePreview(null);
+    setImageData(null);
+  };
+
+  const onPickImage = (file: File | undefined) => {
+    if (!file) {
+      setImagePreview(null);
+      setImageData(null);
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      toast.error('Vyber obrázek (JPG, PNG, …)');
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error('Obrázek je moc velký (max. cca 1,5 MB)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setImageData(dataUrl);
+      setImagePreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearImage = () => {
+    setImagePreview(null);
+    setImageData(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleCreate = async () => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      toast.error('Supabase není nastavený – doplň VITE_SUPABASE_URL a VITE_SUPABASE_ANON_KEY.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const text = instruction.trim();
+      const payload = {
+        instruction_text: text,
+        instruction_image: imageData ?? null,
+      };
+      const { data, error } = await supabase.from(CIRCUIT_ASSIGNMENTS_TABLE).insert(payload).select("id");
+
+      if (error) throw error;
+      const row = data?.[0];
+      if (!row?.id) {
+        throw new Error(
+          "Záznam se nevrátil z databáze (zkontroluj RLS: INSERT i SELECT pro circuit_assignments).",
+        );
+      }
+
+      const url = assignmentPublicUrl(row.id);
+      setCreatedUrl(url);
+      resetForm();
+      toast.success('Zadání je v databázi – zkopíruj odkaz pro studenty.');
+    } catch (e) {
+      console.error("Uložení zadání (Supabase):", e);
+      const detail = formatDbError(e);
+      toast.error(
+        detail.length > 0
+          ? detail
+          : "Nepodařilo se uložit zadání. V Supabase spusť supabase/schema.sql (circuit_assignments, circuit_submissions).",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent side="right" className="w-[min(100vw-16px,440px)] !max-w-[min(100vw-16px,440px)] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Úkoly</SheetTitle>
+            <SheetDescription>
+              Vytvoř zadání s textem a volitelným obrázkem. Odkaz pošli studentům; jejich odevzdání uvidíš na odkazu z
+              jejich odpovědi.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex flex-col gap-4 px-4 pb-6">
+            {!isSupabaseConfigured && (
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                V projektu chybí proměnné prostředí Supabase. Zkopíruj{' '}
+                <code className="text-xs">.env.example</code> na <code className="text-xs">.env</code> a doplň URL a
+                anon klíč. SQL schéma je v <code className="text-xs">supabase/schema.sql</code>.
+              </p>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="task-instruction">Text zadání</Label>
+              <Textarea
+                id="task-instruction"
+                value={instruction}
+                onChange={e => setInstruction(e.target.value)}
+                placeholder="Např. Sestroj obvod se dvěma žárovkami …"
+                rows={6}
+                className="resize-y min-h-[120px]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="task-image">Obrázek k zadání (volitelné)</Label>
+              <input
+                ref={fileInputRef}
+                id="task-image"
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={e => onPickImage(e.target.files?.[0])}
+              />
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => fileInputRef.current?.click()}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                onDragEnter={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragActive(true);
+                }}
+                onDragOver={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDragLeave={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragActive(false);
+                }}
+                onDrop={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragActive(false);
+                  onPickImage(e.dataTransfer.files?.[0]);
+                }}
+                className={[
+                  'flex min-h-[140px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2',
+                  dragActive
+                    ? 'border-indigo-400 bg-indigo-50/80 text-indigo-900'
+                    : 'border-zinc-300 bg-zinc-50/50 text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50',
+                ].join(' ')}
+              >
+                <ImagePlus
+                  className={`size-9 stroke-[1.5] ${dragActive ? 'text-indigo-500' : 'text-zinc-400'}`}
+                  aria-hidden
+                />
+                <div className="text-sm font-medium text-zinc-700">
+                  Přetáhni obrázek sem
+                </div>
+                <div className="text-xs text-zinc-500">
+                  nebo klikni a vyber soubor · JPG, PNG, WebP · max. 1,5&nbsp;MB
+                </div>
+              </div>
+              {imagePreview && (
+                <div className="relative inline-block max-w-full">
+                  <img
+                    src={imagePreview}
+                    alt="Náhled zadání"
+                    className="max-h-48 w-full rounded-lg border border-zinc-200 object-contain"
+                  />
+                  <button
+                    type="button"
+                    onClick={clearImage}
+                    className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-zinc-900/75 text-white shadow-md transition-colors hover:bg-zinc-900"
+                    title="Odebrat obrázek"
+                  >
+                    <X size={16} aria-hidden />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <Button type="button" onClick={handleCreate} disabled={busy || !instruction.trim()} className="w-full">
+              {busy ? 'Ukládám…' : 'Vytvořit zadání'}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {createdUrl !== null && (
+        <ShareModal
+          url={createdUrl}
+          onClose={() => setCreatedUrl(null)}
+          title="Odkaz na zadání"
+          description="Zkopíruj odkaz a pošli ho studentům. Po vyplnění jména uvidí zadání vlevo a mohou tvořit obvod."
+        />
+      )}
+    </>
+  );
+}

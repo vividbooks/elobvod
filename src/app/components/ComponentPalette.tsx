@@ -8,6 +8,8 @@ interface Props {
   tool: Tool;
   onToolChange: (tool: Tool) => void;
   onClearAll: () => void;
+  /** Jen výběr + posun, stejný vzhled lišty – např. náhled odevzdání. */
+  navigationOnly?: boolean;
 }
 
 const NAVY = '#1e1b4b';
@@ -36,7 +38,7 @@ function Tooltip({ label }: { label: string }) {
   );
 }
 
-export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
+export function ComponentPalette({ tool, onToolChange, onClearAll, navigationOnly = false }: Props) {
   const [batteryOpen, setBatteryOpen] = useState(false);
   const batteryRef = useRef<HTMLDivElement>(null);
   const [bulbOpen, setBulbOpen] = useState(false);
@@ -147,6 +149,24 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
       </div>
     );
   };
+
+  if (navigationOnly) {
+    return (
+      <div
+        className="flex flex-col items-center py-3 px-[5px] select-none"
+        style={{
+          width: 80,
+          background: BG,
+          borderRadius: 999,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.13)',
+          overflow: 'visible',
+        }}
+      >
+        {iconBtn('select', <MousePointer2 size={18} strokeWidth={2.2} />, 'Výběr (V)')}
+        {iconBtn('pan', <Hand size={18} strokeWidth={2.2} />, 'Posun (H)')}
+      </div>
+    );
+  }
 
   return (
     <div
