@@ -3594,7 +3594,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       {!isViewOnly && (
         <div
           className="absolute top-3 right-3 z-10 flex items-center rounded-full shadow-lg overflow-hidden select-none"
-          style={{ background: '#edecf0', height: 50 }}
+          style={{ background: '#ffffff', height: 50 }}
         >
           <button onClick={undo} disabled={!histUI.canUndo}
             title={isTouch ? 'Zpět' : 'Zpět (Ctrl+Z)'}
@@ -3631,10 +3631,10 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       )}
 
       {tool === 'select' && components.length === 0 && wires.length === 0 && !isViewOnly && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-300 text-center pointer-events-none select-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-zinc-600 text-center pointer-events-none select-none">
           <div className="text-[40px] mb-2">⚡</div>
-          <div className="text-[15px]">Vyber součástku z panelu vlevo</div>
-          <div className="text-[13px] mt-1">{isTouch ? 'a klepni na mřížku' : 'a klikni na mřížku'}</div>
+          <div className="text-[15px] font-medium">Vyber součástku z panelu vlevo</div>
+          <div className="text-[13px] mt-1 text-zinc-500">{isTouch ? 'a klepni na mřížku' : 'a klikni na mřížku'}</div>
         </div>
       )}
 

@@ -11,7 +11,7 @@ interface Props {
 }
 
 const NAVY = '#1e1b4b';
-const BG = '#edecf0';
+const BG = '#ffffff';
 
 /** Malý tooltip balónek napravo od tlačítka */
 function Tooltip({ label }: { label: string }) {
@@ -203,7 +203,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Slabá baterie 4.5 V */}
             <button
               onClick={() => { onToolChange('battery'); setBatteryOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'battery' ? NAVY : 'transparent',
                 color: tool === 'battery' ? '#fff' : '#3f3f46',
@@ -220,7 +220,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Silná baterie 9 V */}
             <button
               onClick={() => { onToolChange('battery2'); setBatteryOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'battery2' ? NAVY : 'transparent',
                 color: tool === 'battery2' ? '#fff' : '#3f3f46',
@@ -237,7 +237,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Nejsilnější baterie 12 V */}
             <button
               onClick={() => { onToolChange('battery3'); setBatteryOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'battery3' ? NAVY : 'transparent',
                 color: tool === 'battery3' ? '#fff' : '#3f3f46',
@@ -285,7 +285,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Slabá žárovka 4,5 V */}
             <button
               onClick={() => { onToolChange('bulb'); setBulbOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'bulb' ? NAVY : 'transparent',
                 color: tool === 'bulb' ? '#fff' : '#3f3f46',
@@ -302,7 +302,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Střední žárovka 9 V */}
             <button
               onClick={() => { onToolChange('bulb2'); setBulbOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'bulb2' ? NAVY : 'transparent',
                 color: tool === 'bulb2' ? '#fff' : '#3f3f46',
@@ -319,7 +319,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Silná žárovka 12 V */}
             <button
               onClick={() => { onToolChange('bulb3'); setBulbOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'bulb3' ? NAVY : 'transparent',
                 color: tool === 'bulb3' ? '#fff' : '#3f3f46',
@@ -368,7 +368,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
 
             <button
               onClick={() => { onToolChange('resistor'); setResistorOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'resistor' ? NAVY : 'transparent',
                 color: tool === 'resistor' ? '#fff' : '#3f3f46',
@@ -384,7 +384,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
 
             <button
               onClick={() => { onToolChange('resistor2'); setResistorOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'resistor2' ? NAVY : 'transparent',
                 color: tool === 'resistor2' ? '#fff' : '#3f3f46',
@@ -400,7 +400,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
 
             <button
               onClick={() => { onToolChange('resistor3'); setResistorOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'resistor3' ? NAVY : 'transparent',
                 color: tool === 'resistor3' ? '#fff' : '#3f3f46',
@@ -461,7 +461,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Ampérmetr */}
             <button
               onClick={() => { onToolChange('ammeter'); setMeterOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'ammeter' ? NAVY : 'transparent',
                 color: tool === 'ammeter' ? '#fff' : '#3f3f46',
@@ -478,7 +478,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Voltmetr */}
             <button
               onClick={() => { onToolChange('voltmeter'); setMeterOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'voltmeter' ? NAVY : 'transparent',
                 color: tool === 'voltmeter' ? '#fff' : '#3f3f46',
@@ -530,7 +530,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Červená LED 1.8 V */}
             <button
               onClick={() => { onToolChange('led'); setLedOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'led' ? NAVY : 'transparent',
                 color: tool === 'led' ? '#fff' : '#3f3f46',
@@ -547,7 +547,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Zelená LED 2.2 V */}
             <button
               onClick={() => { onToolChange('led2'); setLedOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'led2' ? NAVY : 'transparent',
                 color: tool === 'led2' ? '#fff' : '#3f3f46',
@@ -564,7 +564,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll }: Props) {
             {/* Modrá LED 3.0 V */}
             <button
               onClick={() => { onToolChange('led3'); setLedOpen(false); }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-white/70"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
               style={{
                 background: tool === 'led3' ? NAVY : 'transparent',
                 color: tool === 'led3' ? '#fff' : '#3f3f46',

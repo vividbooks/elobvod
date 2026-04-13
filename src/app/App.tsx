@@ -8,7 +8,7 @@ import { Toaster } from './components/ui/sonner';
 import { parseCircuitFromUrl } from './utils/circuitUrl';
 import { ShareModal } from './components/ShareModal';
 
-const BG = '#edecf0';
+const BG = '#ffffff';
 
 /*
   Elektrony na drátech (animace) jsou vypnuté: CircuitCanvas má showWireElectrons výchozí false.
