@@ -188,6 +188,9 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
               <Section title="Zkratový obvod">
                 Při zkratu (≥ 10 A) se postižená část obvodu zvýrazní <b style={{ color: '#f97316' }}>oranžově</b>.
               </Section>
+              <p className="pt-4 mt-2 border-t border-zinc-200/80 text-zinc-500 text-center" style={{ fontSize: 12 }}>
+                Version 1.01
+              </p>
             </div>
           </div>
         </div>,

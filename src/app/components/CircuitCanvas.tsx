@@ -506,6 +506,47 @@ function mergeJunctionAwareWiresIntoUF(
 }
 
 /**
+ * Union-find stejný jako topologie obvodu včetně baterie (oba póly patří do jedné součástky).
+ * Voltmetr vynechán (nekonečný odpor). Použití: sondy v různých izolovaných sítích → neplatné U.
+ */
+function buildElectricalConnectivityUnionFind(
+  components: PlacedComponent[],
+  wires: Wire[],
+  switchStates: Record<string, boolean>,
+  openCircuitIds?: Set<string>,
+) {
+  const nk = (hx: number, hy: number) => `${hx},${hy}`;
+  const uf = createUnionFindMap();
+  mergeJunctionAwareWiresIntoUF(wires, components, nk, uf);
+  const { union } = uf;
+
+  for (const comp of components) {
+    if (comp.type === 'voltmeter') continue;
+    if (comp.type === 'switch' && !switchStates[comp.id]) continue;
+    if (openCircuitIds?.has(comp.id)) continue;
+    const [t0, t1] = getTerminalHalfGrid(comp);
+    if (comp.type === 'potentiometer') {
+      const wt = getWiperTerminalHalfGrid(comp);
+      if (wt) {
+        union(nk(t0.hx, t0.hy), nk(wt.hx, wt.hy));
+        union(nk(wt.hx, wt.hy), nk(t1.hx, t1.hy));
+      } else {
+        union(nk(t0.hx, t0.hy), nk(t1.hx, t1.hy));
+      }
+    } else if (comp.type === 'npn') {
+      const bt = getBaseTerminalHalfGrid(comp);
+      union(nk(t0.hx, t0.hy), nk(t1.hx, t1.hy));
+      if (bt) {
+        union(nk(bt.hx, bt.hy), nk(t1.hx, t1.hy));
+      }
+    } else {
+      union(nk(t0.hx, t0.hy), nk(t1.hx, t1.hy));
+    }
+  }
+  return uf;
+}
+
+/**
  * Find a wire segment that passes through a grid cell, allowing us to
  * insert a component there by splitting the wire.
  */
@@ -1907,6 +1948,9 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
 
     // ── Union-find jako v MNA: dráty se dotýkají jen na vrcholech / svorkách ──
     const nk = (hx: number, hy: number) => `${hx},${hy}`;
+    const ufNet = buildElectricalConnectivityUnionFind(components, wires, switchStates, openCircuitIds);
+    const ufNetFind = ufNet.find;
+
     const ufVm = createUnionFindMap();
     mergeJunctionAwareWiresIntoUF(wires, components, nk, ufVm);
     const ufF = ufVm.find;
@@ -1942,22 +1986,23 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     );
 
     if (sources.length > 0) {
-      // Ground reference: negative terminal of the first source
-      const [g0] = getTerminalHalfGrid(sources[0]);
-      const gndGroup = ufF(nk(g0.hx, g0.hy));
+      // Referenční uzel: t1 = záporný pól (viz MNA: nPlus=nA=t0, nMinus=nB=t1)
+      const [, tNeg0] = getTerminalHalfGrid(sources[0]);
+      const gndGroup = ufF(nk(tNeg0.hx, tNeg0.hy));
       staticV.set(gndGroup, 0);
 
       // Iteratively propagate — multiple passes to resolve chains of sources
       for (let pass = 0; pass < sources.length + 1; pass++) {
         for (const src of sources) {
           const [t0, t1] = getTerminalHalfGrid(src);
-          const grpMinus = ufF(nk(t0.hx, t0.hy));
-          const grpPlus = ufF(nk(t1.hx, t1.hy));
+          const gPlus = ufF(nk(t0.hx, t0.hy)); // kladný pól
+          const gMinus = ufF(nk(t1.hx, t1.hy)); // záporný pól
           const emf = getComponentVoltage(src);
-          if (staticV.has(grpMinus) && !staticV.has(grpPlus)) {
-            staticV.set(grpPlus, staticV.get(grpMinus)! + emf);
-          } else if (staticV.has(grpPlus) && !staticV.has(grpMinus)) {
-            staticV.set(grpMinus, staticV.get(grpPlus)! - emf);
+          // V(t0) − V(t1) = E
+          if (staticV.has(gMinus) && !staticV.has(gPlus)) {
+            staticV.set(gPlus, staticV.get(gMinus)! + emf);
+          } else if (staticV.has(gPlus) && !staticV.has(gMinus)) {
+            staticV.set(gMinus, staticV.get(gPlus)! - emf);
           }
         }
       }
@@ -1970,6 +2015,15 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       if (ufVm.parent.has(key)) return ufF(key);
       for (const wire of wires) {
         if (pointOnWirePolyline(wire, hx, hy)) return ufF(wireScopedKey(wire.id, hx, hy));
+      }
+      return null;
+    };
+
+    const findNetworkGroup = (hx: number, hy: number): string | null => {
+      const key = nk(hx, hy);
+      if (ufNet.parent.has(key)) return ufNetFind(key);
+      for (const wire of wires) {
+        if (pointOnWirePolyline(wire, hx, hy)) return ufNetFind(wireScopedKey(wire.id, hx, hy));
       }
       return null;
     };
@@ -2024,6 +2078,10 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       const v2 = voltageAt(p2.hx, p2.hy);
       // If either probe is not connected to any wire, reading is 0
       if (v1 === null || v2 === null) { readings.set(comp.id, 0); continue; }
+      const net1 = findNetworkGroup(p1.hx, p1.hy);
+      const net2 = findNetworkGroup(p2.hx, p2.hy);
+      // Izolované obvody: jedno globální uzemnění v MNA dává nesmyslné rozdíly potenciálů → 0 V
+      if (net1 === null || net2 === null || net1 !== net2) { readings.set(comp.id, 0); continue; }
       readings.set(comp.id, v1 - v2);
     }
     return readings;
