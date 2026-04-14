@@ -362,7 +362,7 @@ export default function StudentAssignmentPage() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
-              <p className="text-sm text-zinc-800 whitespace-pre-wrap">{assignment.instruction_text || '—'}</p>
+              <p className="text-lg leading-relaxed text-zinc-800 whitespace-pre-wrap">{assignment.instruction_text || '—'}</p>
               {assignment.instruction_image ? (
                 <img
                   src={assignment.instruction_image}
