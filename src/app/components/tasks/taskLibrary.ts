@@ -17,9 +17,39 @@ export type TaskLibraryEntry = {
 
 export const TASK_LIBRARY: TaskLibraryEntry[] = [
   {
-    key: 'ampermetr',
-    title: 'Ampérmetr',
-    assignmentId: 'e83e4b61-f053-4024-9d68-46befa731a1b',
+    key: 'ukol-95a0fa17',
+    title: 'Jednoduchý elektrický obvod – žárovka',
+    assignmentId: '95a0fa17-10f8-4e19-9fa1-d0df42ebb2ce',
+  },
+  {
+    key: 'ukol-a093f1f2',
+    title: 'Zadání a093f1f2',
+    assignmentId: 'a093f1f2-f9c5-4b3b-ba17-83dd30c671f2',
+  },
+  {
+    key: 'ukol-4bda280d',
+    title: 'Zadání 4bda280d',
+    assignmentId: '4bda280d-86ae-4ccf-801d-476bbe07a589',
+  },
+  {
+    key: 'ukol-4bb304ed',
+    title: 'Zadání 4bb304ed',
+    assignmentId: '4bb304ed-cedd-489f-bdbd-5d71229978de',
+  },
+  {
+    key: 'ukol-d7d9b68b',
+    title: 'Zadání d7d9b68b',
+    assignmentId: 'd7d9b68b-7cfa-4170-863c-6a4155c7b208',
+  },
+  {
+    key: 'ukol-85c93054',
+    title: 'Zadání 85c93054',
+    assignmentId: '85c93054-2a74-4ed1-83fc-5f585e35e881',
+  },
+  {
+    key: 'ukol-a3ba270d',
+    title: 'Zadání a3ba270d',
+    assignmentId: 'a3ba270d-34ab-42ee-91fb-e963576d6b97',
   },
 ];
 

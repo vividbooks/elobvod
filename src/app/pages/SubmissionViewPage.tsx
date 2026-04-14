@@ -16,9 +16,11 @@ type SubmissionRow = {
   student_name: string;
   circuit_encoded: string;
   assignment_id: string;
+  student_note?: string;
 };
 
 type AssignmentRow = {
+  title?: string;
   instruction_text: string;
   instruction_image: string | null;
   instruction_steps?: unknown;
@@ -53,26 +55,33 @@ export default function SubmissionViewPage() {
 
     let cancelled = false;
     (async () => {
-      const { data: sub, error: e1 } = await supabase
-        .from(CIRCUIT_SUBMISSIONS_TABLE)
-        .select('*')
-        .eq('id', submissionId)
-        .maybeSingle();
-      if (cancelled) return;
-      if (e1 || !sub) {
-        setLoadState('error');
-        return;
+      try {
+        const { data: sub, error: e1 } = await supabase
+          .from(CIRCUIT_SUBMISSIONS_TABLE)
+          .select('*')
+          .eq('id', submissionId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (e1 || !sub) {
+          setLoadState('error');
+          return;
+        }
+        setSubmission(sub as SubmissionRow);
+
+        const { data: asg } = await supabase
+          .from(CIRCUIT_ASSIGNMENTS_TABLE)
+          .select('title, instruction_text, instruction_image, instruction_steps')
+          .eq('id', (sub as SubmissionRow).assignment_id)
+          .maybeSingle();
+
+        if (!cancelled && asg) setAssignment(asg as AssignmentRow);
+        setLoadState('ready');
+      } catch (e) {
+        if (!cancelled) {
+          console.error('Načtení odevzdání (Supabase):', e);
+          setLoadState('error');
+        }
       }
-      setSubmission(sub as SubmissionRow);
-
-      const { data: asg } = await supabase
-        .from(CIRCUIT_ASSIGNMENTS_TABLE)
-        .select('instruction_text, instruction_image, instruction_steps')
-        .eq('id', (sub as SubmissionRow).assignment_id)
-        .maybeSingle();
-
-      if (!cancelled && asg) setAssignment(asg as AssignmentRow);
-      setLoadState('ready');
     })();
 
     return () => {
@@ -154,12 +163,21 @@ export default function SubmissionViewPage() {
           <p className="mt-2 text-sm text-zinc-700">
             <span className="font-medium text-zinc-900">Student:</span> {submission.student_name}
           </p>
+          {submission.student_note?.trim() ? (
+            <div className="mt-3">
+              <div className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Poznámka studenta</div>
+              <p className="mt-1 text-sm text-zinc-700 whitespace-pre-wrap">{submission.student_note.trim()}</p>
+            </div>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
           {assignment && instructionView && (
             <>
               <div className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Zadání</div>
+              {assignment.title?.trim() ? (
+                <div className="text-base font-semibold text-zinc-900">{assignment.title.trim()}</div>
+              ) : null}
               {instructionView.kind === 'steps' ? (
                 <ol className="m-0 list-decimal space-y-3 pl-4 text-sm leading-relaxed text-zinc-800 marker:text-zinc-500">
                   {instructionView.steps.map((s, i) => (

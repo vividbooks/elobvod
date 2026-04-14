@@ -22,13 +22,14 @@ import {
 import { Textarea } from '../ui/textarea';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
-import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { getSupabase, getSupabaseConfigInfo, isSupabaseConfigured } from '@/lib/supabase';
 import { CIRCUIT_ASSIGNMENTS_TABLE } from '@/lib/circuitTables';
 import { assignmentPublicUrl } from '../../utils/appUrl';
 import { TASK_LIBRARY, resolveLibraryImageSrc, resolveStudentLink } from './taskLibrary';
 import {
   firstStepImage,
   instructionStepsToFallbackText,
+  normalizeInstructionSteps,
 } from '@/app/utils/instructionSteps';
 import { toast } from 'sonner';
 
@@ -56,13 +57,16 @@ interface Props {
 
 export function TasksSheet({ open, onOpenChange }: Props) {
   const createdLinkInputRef = useRef<HTMLInputElement>(null);
+  const [title, setTitle] = useState('');
   const [steps, setSteps] = useState<StepDraft[]>([{ text: '', image: null }]);
   const [dragActiveStep, setDragActiveStep] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
-  /** instruction_image z DB podle UUID zadani (pro nahled v knihovne) */
-  const [libraryDbImages, setLibraryDbImages] = useState<Record<string, string | null>>({});
+  /** title + instruction_image z DB podle UUID zadani (pro knihovnu) */
+  const [libraryDbMeta, setLibraryDbMeta] = useState<
+    Record<string, { instruction_image: string | null; title: string | null }>
+  >({});
   const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
@@ -77,16 +81,23 @@ export function TasksSheet({ open, onOpenChange }: Props) {
     if (ids.length === 0) return;
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from(CIRCUIT_ASSIGNMENTS_TABLE)
-        .select('id, instruction_image')
-        .in('id', ids);
-      if (cancelled || error || !data) return;
-      const next: Record<string, string | null> = {};
-      for (const row of data as { id: string; instruction_image: string | null }[]) {
-        next[row.id] = row.instruction_image;
+      try {
+        const { data, error } = await supabase
+          .from(CIRCUIT_ASSIGNMENTS_TABLE)
+          .select('id, instruction_image, title')
+          .in('id', ids);
+        if (cancelled || error || !data) return;
+        const next: Record<string, { instruction_image: string | null; title: string | null }> = {};
+        for (const row of data as { id: string; instruction_image: string | null; title: string | null }[]) {
+          next[row.id] = { instruction_image: row.instruction_image, title: row.title };
+        }
+        setLibraryDbMeta(next);
+      } catch (e) {
+        if (!cancelled) {
+          console.error('Načtení knihovny (Supabase):', e);
+          toast.error('Nepodařilo se načíst knihovnu úkolů (Supabase).');
+        }
       }
-      setLibraryDbImages(next);
     })();
     return () => {
       cancelled = true;
@@ -101,8 +112,52 @@ export function TasksSheet({ open, onOpenChange }: Props) {
   }, [createdUrl]);
 
   const resetForm = () => {
+    setTitle('');
     setSteps([{ text: '', image: null }]);
     setDragActiveStep(null);
+  };
+
+  const loadLibraryAssignmentIntoDraft = async (assignmentId: string) => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      toast.error('Supabase klient není k dispozici.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data, error } = await supabase
+        .from(CIRCUIT_ASSIGNMENTS_TABLE)
+        .select('id, title, instruction_text, instruction_steps')
+        .eq('id', assignmentId)
+        .maybeSingle();
+      if (error || !data) {
+        throw error ?? new Error('Zadání se nepodařilo načíst.');
+      }
+
+      const normalized = normalizeInstructionSteps((data as any).instruction_steps);
+      const nextSteps: StepDraft[] =
+        normalized.length > 0
+          ? normalized.map(s => ({ text: s.text, image: s.image }))
+          : [
+              {
+                text: String((data as any).instruction_text ?? '').trim(),
+                image: null,
+              },
+            ];
+
+      setTitle(String((data as any).title ?? '').trim());
+      setSteps(nextSteps.length > 0 ? nextSteps : [{ text: '', image: null }]);
+      setDragActiveStep(null);
+      setCreatedUrl(null);
+      setLinkCopied(false);
+      setLibraryOpen(false);
+      toast.success('Zadání načteno – uprav a ulož jako nové.');
+    } catch (e) {
+      console.error('Načtení zadání pro úpravu (Supabase):', e);
+      toast.error('Nepodařilo se načíst zadání pro úpravu.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const setStepTextAt = (index: number, value: string) => {
@@ -169,7 +224,9 @@ export function TasksSheet({ open, onOpenChange }: Props) {
     }
     setBusy(true);
     try {
+      const cleanedTitle = title.trim();
       const payload = {
+        title: cleanedTitle,
         instruction_text: instructionStepsToFallbackText(cleaned.map(s => s.text)),
         instruction_steps: cleaned.map(s => (s.image ? { text: s.text, image: s.image } : { text: s.text })),
         instruction_image: firstStepImage(cleaned) ?? null,
@@ -190,11 +247,17 @@ export function TasksSheet({ open, onOpenChange }: Props) {
       toast.success('Zadání je v databázi – zkopíruj odkaz pro studenty.');
     } catch (e) {
       console.error("Uložení zadání (Supabase):", e);
+      const config = getSupabaseConfigInfo();
+      const isFetchFailure =
+        e instanceof TypeError && /fetch/i.test(e.message || '') ||
+        (typeof e === 'object' && e !== null && 'message' in e && String((e as any).message).includes('Failed to fetch'));
       const detail = formatDbError(e);
       toast.error(
-        detail.length > 0
-          ? detail
-          : "Nepodařilo se uložit zadání. V Supabase spusť supabase/schema.sql (circuit_assignments, circuit_submissions).",
+        isFetchFailure
+          ? `Supabase je nedostupný (Failed to fetch). Zkontroluj připojení, DNS / blokátory a konfiguraci. URL: ${config.url ?? '—'}`
+          : detail.length > 0
+            ? detail
+            : "Nepodařilo se uložit zadání. V Supabase spusť supabase/schema.sql (circuit_assignments, circuit_submissions).",
       );
     } finally {
       setBusy(false);
@@ -205,10 +268,10 @@ export function TasksSheet({ open, onOpenChange }: Props) {
     <>
       <Sheet
         open={open}
-               onOpenChange={v => {
+        onOpenChange={v => {
           if (!v) {
             setLibraryOpen(false);
-            setLibraryDbImages({});
+            setLibraryDbMeta({});
             setCreatedUrl(null);
             setLinkCopied(false);
           }
@@ -296,6 +359,19 @@ export function TasksSheet({ open, onOpenChange }: Props) {
               <div className="flex flex-col gap-4 px-4 pb-3">
 
                 <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label className="text-base" htmlFor="task-title">
+                      Název zadání (volitelné)
+                    </Label>
+                    <input
+                      id="task-title"
+                      value={title}
+                      onChange={e => setTitle(e.target.value)}
+                      placeholder="Např. Ampérmetr – základní zapojení"
+                      className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-800 outline-none ring-indigo-500/0 transition-shadow focus-visible:ring-2 focus-visible:ring-indigo-400"
+                    />
+                  </div>
+
                   <div className="flex items-end justify-between gap-2">
                     <Label className="text-base">Kroky zadání</Label>
                     <button
@@ -453,10 +529,7 @@ export function TasksSheet({ open, onOpenChange }: Props) {
                   <Library className="size-5 text-zinc-600 shrink-0" aria-hidden />
                   <SheetTitle className="text-left">Knihovna úkolů</SheetTitle>
                 </div>
-                <SheetDescription className="text-left">
-                  Přednastavená zadání. Seznam upravíš v{' '}
-                  <code className="text-[11px]">taskLibrary.ts</code>.
-                </SheetDescription>
+                <SheetDescription className="text-left">Přednastavená zadání.</SheetDescription>
               </SheetHeader>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -470,10 +543,14 @@ export function TasksSheet({ open, onOpenChange }: Props) {
                     {TASK_LIBRARY.map(entry => {
                       const link = resolveStudentLink(entry);
                       const id = entry.assignmentId?.trim();
-                      const fromDb = id ? libraryDbImages[id] : undefined;
+                      const fromDb = id ? libraryDbMeta[id] : undefined;
+                      const displayTitle =
+                        fromDb?.title && fromDb.title.trim() ? fromDb.title.trim() : entry.title;
                       const imgSrc =
                         resolveLibraryImageSrc(entry.imageUrl) ??
-                        (fromDb && fromDb.trim() ? fromDb : null);
+                        (fromDb?.instruction_image && fromDb.instruction_image.trim()
+                          ? fromDb.instruction_image
+                          : null);
                       return (
                         <li
                           key={entry.key}
@@ -482,27 +559,38 @@ export function TasksSheet({ open, onOpenChange }: Props) {
                           <div className="flex items-stretch gap-3">
                             <div className="min-w-0 flex-1 flex flex-col justify-between gap-3">
                               <div className="text-[1.1375rem] font-semibold text-zinc-900 leading-snug">
-                                {entry.title}
+                                {displayTitle}
                               </div>
                               {link ? (
                                 <div className="flex flex-col items-start gap-1.5">
-                                  <a
-                                    href={link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-indigo-700 shadow-sm transition-colors hover:bg-indigo-50"
-                                  >
-                                    <ExternalLink className="size-3.5 shrink-0 opacity-80" aria-hidden />
-                                    Otevřít
-                                  </a>
-                                  <button
-                                    type="button"
-                                    onClick={() => void copyText('Odkaz pro zadání', link)}
-                                    className="inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs font-medium text-zinc-800 transition-colors hover:bg-zinc-100"
-                                  >
-                                    <Copy className="size-3.5 shrink-0 opacity-70" aria-hidden />
-                                    Odkaz pro zadání
-                                  </button>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <a
+                                      href={link}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-indigo-700 shadow-sm transition-colors hover:bg-indigo-50"
+                                    >
+                                      <ExternalLink className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                                      Otevřít
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => void copyText('Odkaz pro zadání', link)}
+                                      className="inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs font-medium text-zinc-800 transition-colors hover:bg-zinc-100"
+                                    >
+                                      <Copy className="size-3.5 shrink-0 opacity-70" aria-hidden />
+                                      Odkaz pro zadání
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={!id || busy}
+                                      onClick={() => (id ? void loadLibraryAssignmentIntoDraft(id) : undefined)}
+                                      className="inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-800 shadow-sm transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                      title={!id ? 'Toto zadání nemá assignmentId' : 'Upravit toto zadání'}
+                                    >
+                                      Upravit
+                                    </button>
+                                  </div>
                                 </div>
                               ) : null}
                             </div>

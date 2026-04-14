@@ -29,6 +29,7 @@ const BG = '#ffffff';
 
 const ASIDE_W_KEY = 'elobvod-student-aside-w';
 const ASIDE_COLLAPSED_KEY = 'elobvod-student-aside-collapsed';
+const NOTE_KEY_PREFIX = 'elobvod-student-note-';
 const MIN_ASIDE_PX = 200;
 const MAX_ASIDE_PX = 640;
 const DEFAULT_ASIDE_PX = 288;
@@ -48,8 +49,13 @@ function nameStorageKey(assignmentId: string) {
   return `elobvod-ukol-jmeno-${assignmentId}`;
 }
 
+function noteStorageKey(assignmentId: string) {
+  return `${NOTE_KEY_PREFIX}${assignmentId}`;
+}
+
 type AssignmentRow = {
   id: string;
+  title?: string;
   instruction_text: string;
   instruction_image: string | null;
   instruction_steps?: unknown;
@@ -69,10 +75,12 @@ export default function StudentAssignmentPage() {
 
   const [loadState, setLoadState] = useState<'loading' | 'error' | 'ready'>('loading');
   const [assignment, setAssignment] = useState<AssignmentRow | null>(null);
+  const [stepIndex, setStepIndex] = useState(0);
 
   const [gateName, setGateName] = useState('');
   const [studentName, setStudentName] = useState<string | null>(null);
   const [submitNameOpen, setSubmitNameOpen] = useState(false);
+  const [studentNote, setStudentNote] = useState('');
 
   const [submitBusy, setSubmitBusy] = useState(false);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -118,6 +126,8 @@ export default function StudentAssignmentPage() {
     }
     const saved = sessionStorage.getItem(nameStorageKey(assignmentId));
     if (saved?.trim()) setStudentName(saved.trim());
+    const savedNote = sessionStorage.getItem(noteStorageKey(assignmentId));
+    if (savedNote != null) setStudentNote(savedNote);
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -127,18 +137,26 @@ export default function StudentAssignmentPage() {
 
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from(CIRCUIT_ASSIGNMENTS_TABLE)
-        .select('*')
-        .eq('id', assignmentId)
-        .maybeSingle();
-      if (cancelled) return;
-      if (error || !data) {
-        setLoadState('error');
-        return;
+      try {
+        const { data, error } = await supabase
+          .from(CIRCUIT_ASSIGNMENTS_TABLE)
+          .select('*')
+          .eq('id', assignmentId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error || !data) {
+          setLoadState('error');
+          return;
+        }
+        setAssignment(data as AssignmentRow);
+        setStepIndex(0);
+        setLoadState('ready');
+      } catch (e) {
+        if (!cancelled) {
+          console.error('Načtení zadání (Supabase):', e);
+          setLoadState('error');
+        }
       }
-      setAssignment(data as AssignmentRow);
-      setLoadState('ready');
     })();
 
     return () => {
@@ -161,6 +179,7 @@ export default function StudentAssignmentPage() {
           assignment_id: assignmentId,
           student_name: name,
           circuit_encoded: encoded,
+          student_note: studentNote.trim(),
         })
         .select('id')
         .single();
@@ -176,7 +195,7 @@ export default function StudentAssignmentPage() {
     } finally {
       setSubmitBusy(false);
     }
-  }, [assignmentId]);
+  }, [assignmentId, studentNote]);
 
   const handleSubmit = useCallback(() => {
     const fn = shareHandlerRef.current;
@@ -256,6 +275,11 @@ export default function StudentAssignmentPage() {
   }
 
   const instructionView = assignmentInstructionDisplay(assignment);
+  const stepsCount = instructionView.kind === 'steps' ? instructionView.steps.length : 0;
+  const activeStep =
+    instructionView.kind === 'steps' && stepsCount > 0
+      ? instructionView.steps[Math.min(Math.max(0, stepIndex), stepsCount - 1)]
+      : null;
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white">
@@ -352,7 +376,12 @@ export default function StudentAssignmentPage() {
             aria-expanded
           >
             <div className="flex items-center justify-between gap-2 border-b border-zinc-200/80 px-3 py-2.5">
-              <div className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Zadání</div>
+              <div className="min-w-0">
+                <div className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Zadání</div>
+                {assignment.title?.trim() ? (
+                  <div className="truncate text-sm font-semibold text-zinc-900">{assignment.title.trim()}</div>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={() => setAsideCollapsed(true)}
@@ -367,20 +396,48 @@ export default function StudentAssignmentPage() {
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
               {instructionView.kind === 'steps' ? (
-                <ol className="m-0 list-decimal space-y-4 pl-5 text-lg leading-relaxed text-zinc-800 marker:font-semibold marker:text-zinc-500">
-                  {instructionView.steps.map((s, i) => (
-                    <li key={i} className="space-y-2 pl-1">
-                      <div className="whitespace-pre-wrap">{s.text}</div>
-                      {s.image ? (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                      KROK {Math.min(stepIndex + 1, stepsCount)} / {stepsCount}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setStepIndex(i => Math.max(0, i - 1))}
+                        disabled={stepIndex <= 0}
+                        className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Předchozí
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStepIndex(i => Math.min(stepsCount - 1, i + 1))}
+                        disabled={stepIndex >= stepsCount - 1}
+                        className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Další
+                      </button>
+                    </div>
+                  </div>
+
+                  {activeStep ? (
+                    <div className="space-y-2">
+                      <div className="text-lg leading-relaxed text-zinc-800 whitespace-pre-wrap">
+                        {activeStep.text}
+                      </div>
+                      {activeStep.image ? (
                         <img
-                          src={s.image}
+                          src={activeStep.image}
                           alt=""
                           className="rounded-lg border border-zinc-200 w-full object-contain max-h-[40vh]"
                         />
                       ) : null}
-                    </li>
-                  ))}
-                </ol>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-zinc-500">—</p>
+                  )}
+                </>
               ) : (
                 <>
                   <p className="text-lg leading-relaxed text-zinc-800 whitespace-pre-wrap">
@@ -395,6 +452,22 @@ export default function StudentAssignmentPage() {
                   ) : null}
                 </>
               )}
+
+              <div className="pt-1 border-t border-zinc-200" />
+              <div className="space-y-1.5">
+                <div className="text-xs font-medium text-zinc-500">Poznámka pro učitele (volitelné)</div>
+                <textarea
+                  value={studentNote}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setStudentNote(v);
+                    if (assignmentId) sessionStorage.setItem(noteStorageKey(assignmentId), v);
+                  }}
+                  placeholder="Např. co bylo nejasné, co jsi zkoušel(a)…"
+                  rows={3}
+                  className="w-full resize-y rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 outline-none ring-indigo-500/0 transition-shadow focus-visible:ring-2 focus-visible:ring-indigo-400"
+                />
+              </div>
               {studentName ? (
                 <div className="text-xs text-zinc-500 pt-1 border-t border-zinc-200">Student: {studentName}</div>
               ) : (
