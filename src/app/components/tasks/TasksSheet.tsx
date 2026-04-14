@@ -10,7 +10,7 @@ import {
 import { Textarea } from '../ui/textarea';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
-import { getSupabase, isSupabaseConfigured, SUPABASE_ENV_SETUP_SHORT } from '@/lib/supabase';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import { CIRCUIT_ASSIGNMENTS_TABLE } from '@/lib/circuitTables';
 import { assignmentPublicUrl } from '../../utils/appUrl';
 import { TASK_LIBRARY, resolveLibraryImageSrc, resolveStudentLink } from './taskLibrary';
@@ -132,7 +132,7 @@ export function TasksSheet({ open, onOpenChange }: Props) {
   const handleCreate = async () => {
     const supabase = getSupabase();
     if (!supabase) {
-      toast.error(SUPABASE_ENV_SETUP_SHORT, { duration: 12_000 });
+      toast.error('Supabase klient není k dispozici.');
       return;
     }
     setBusy(true);
@@ -262,25 +262,6 @@ export function TasksSheet({ open, onOpenChange }: Props) {
               ) : null}
 
               <div className="flex flex-col gap-4 px-4 pb-3">
-                {!isSupabaseConfigured && (
-                  <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                    <p className="font-semibold text-amber-900">Supabase lokálně: chybí .env</p>
-                    <p className="leading-relaxed text-amber-900/90">
-                      Po <code className="rounded bg-amber-100/80 px-1 text-xs">git clone</code> nemáš soubor{' '}
-                      <code className="rounded bg-amber-100/80 px-1 text-xs">.env</code> – v repu záměrně není (obsahuje
-                      tajný klíč). V terminálu v kořeni projektu:
-                    </p>
-                    <pre className="overflow-x-auto rounded-md bg-amber-100/60 px-2 py-2 text-xs text-amber-950">
-                      cp .env.example .env
-                    </pre>
-                    <p className="leading-relaxed text-amber-900/90">
-                      Pak otevři <code className="rounded bg-amber-100/80 px-1 text-xs">.env</code>, doplň URL projektu a{' '}
-                      <strong>anon public</strong> klíč z Supabase → Project Settings → API. Stejné hodnoty má i zbytek
-                      týmu (sdílej je mimo GitHub). Schéma tabulek:{' '}
-                      <code className="rounded bg-amber-100/80 px-1 text-xs">supabase/schema.sql</code>.
-                    </p>
-                  </div>
-                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="task-instruction">Text zadání</Label>

@@ -1,17 +1,17 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { SUPABASE_PUBLIC_ANON_KEY, SUPABASE_PUBLIC_URL } from './supabasePublicDefaults';
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const url =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || SUPABASE_PUBLIC_URL;
+const anonKey =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ||
+  SUPABASE_PUBLIC_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(url?.trim() && anonKey?.trim());
 
-/** Pro toasty / UI – vysvětluje, proč kolega po git clone nic nevidí v .env. */
-export const SUPABASE_ENV_SETUP_SHORT =
-  'Zkopíruj v kořeni projektu: .env.example → .env a doplň VITE_SUPABASE_URL a VITE_SUPABASE_ANON_KEY (Supabase → Project Settings → API). Soubor .env se do Gitu nedává – každý vývojář si ho vytvoří lokálně nebo dostane hodnoty bezpečně od týmu.';
-
 let _client: SupabaseClient | null = null;
 
-/** Supabase klient; null pokud chybí env proměnné. */
+/** Supabase klient; null jen při úplně prázdné konfiguraci (nemělo by nastat). */
 export function getSupabase(): SupabaseClient | null {
   if (!isSupabaseConfigured || !url || !anonKey) return null;
   if (!_client) _client = createClient(url, anonKey);
