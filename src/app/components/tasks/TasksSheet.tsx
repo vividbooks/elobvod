@@ -507,6 +507,21 @@ export function TasksSheet({ open, onOpenChange }: Props) {
                 >
                   {busy ? 'Ukládám…' : 'Vytvořit zadání'}
                 </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    setCreatedUrl(null);
+                    setLinkCopied(false);
+                    resetForm();
+                    toast.success('Zadání vymazáno.');
+                  }}
+                  className="w-full"
+                >
+                  Nový úkol
+                </Button>
               </div>
 
               <div className="mt-auto px-4 pb-6 pt-1">
