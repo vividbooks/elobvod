@@ -137,6 +137,9 @@ body {
 }
 
 @theme inline {
+  --font-sans:
+    'Fenomen Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -183,7 +186,7 @@ body {
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
   }
 
   /**
@@ -193,6 +196,7 @@ body {
 
   html {
     font-size: var(--font-size);
+    @apply font-sans;
   }
 
   h1 {

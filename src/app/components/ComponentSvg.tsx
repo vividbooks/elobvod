@@ -362,12 +362,12 @@ function AmmeterTile({ isEnergized = false, electronForward = true, current = 0,
 
       {/* ═══ Digitální displej proudu – mimo translate, ve spodní části karty ═══ */}
       <text fill="#216de8" textAnchor="middle" x="68" y="140">
-        <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="36" fontWeight="500">
+        <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="36" fontWeight="500">
           {milliMode
             ? (current > 0.0001 ? `${(current * 1000).toFixed(1).replace('.', ',')} ` : '0 ')
             : (current > 0.001  ? `${current.toFixed(2).replace('.', ',')} `           : '0 ')}
         </tspan>
-        <tspan fontFamily="Arial, sans-serif" fontSize={milliMode ? "24" : "32"} fontWeight="700">{milliMode ? 'mA' : 'A'}</tspan>
+        <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize={milliMode ? "24" : "32"} fontWeight="700">{milliMode ? 'mA' : 'A'}</tspan>
       </text>
       {/* Electrons in ammeter – disabled */}
     </svg>
@@ -451,7 +451,7 @@ function VoltmeterTile({ voltage = 0, rotation = 0 }: { voltage?: number; rotati
 
         {/* Písmeno V */}
         {/* Písmeno V – bez clipPath, posunut aby byl viditelný */}
-        <text fill="#1d1d1b" fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="16" fontWeight="700"
+        <text fill="#1d1d1b" fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="16" fontWeight="700"
           x="84" y="38" textAnchor="middle">V</text>
 
         {/* Ukazovátko – ručička – úhel dle napětí včetně záporného (±24 V plná výchylka) */}
@@ -471,8 +471,8 @@ function VoltmeterTile({ voltage = 0, rotation = 0 }: { voltage?: number; rotati
 
       {/* Digitální displej napětí (+ u červené sondy, − u černé → záporný údaj při prohození polarit) */}
       <text fill="#0d9488" textAnchor="middle" x="68" y="140">
-        <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="36" fontWeight="500">{`${formatVoltmeterReading(voltage)} `}</tspan>
-        <tspan fontFamily="Arial, sans-serif" fontSize="32" fontWeight="700">V</tspan>
+        <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="36" fontWeight="500">{`${formatVoltmeterReading(voltage)} `}</tspan>
+        <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="32" fontWeight="700">V</tspan>
       </text>
 
       {/* Tečky sond na bočnicích – jen barevné kruhy bez popisků */}
@@ -535,8 +535,8 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           <rect fill="#cccccc" x="80.6848" y="38.5037" width="4.4132" height="25.3053"/>
           {/* Popisek */}
           <text fill="#216de8" textAnchor="middle" x="68.5" y="112">
-            <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="38" fontWeight="500">{resistance !== undefined ? formatResistanceDisplay(resistance).value : '1'} </tspan>
-            <tspan fontFamily="Arial, sans-serif" fontSize="33.5" fontWeight="700">{resistance !== undefined ? formatResistanceDisplay(resistance).unit : 'Ω'}</tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="38" fontWeight="500">{resistance !== undefined ? formatResistanceDisplay(resistance).value : '1'} </tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="33.5" fontWeight="700">{resistance !== undefined ? formatResistanceDisplay(resistance).unit : 'Ω'}</tspan>
           </text>
         </>
       );
@@ -570,8 +570,8 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           <rect fill="#d4af37" x="80.6848" y="38.5037" width="4.4132" height="25.3053"/>
           {/* Popisek */}
           <text fill="#15803d" textAnchor="middle" x="68.5" y="112">
-            <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="38" fontWeight="500">{resistance !== undefined ? formatResistanceDisplay(resistance).value : '100'} </tspan>
-            <tspan fontFamily="Arial, sans-serif" fontSize="33.5" fontWeight="700">{resistance !== undefined ? formatResistanceDisplay(resistance).unit : 'Ω'}</tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="38" fontWeight="500">{resistance !== undefined ? formatResistanceDisplay(resistance).value : '100'} </tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="33.5" fontWeight="700">{resistance !== undefined ? formatResistanceDisplay(resistance).unit : 'Ω'}</tspan>
           </text>
         </>
       );
@@ -605,8 +605,8 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           <rect fill="#d4af37" x="80.6848" y="38.5037" width="4.4132" height="25.3053"/>
           {/* Popisek */}
           <text fill="#c2410c" textAnchor="middle" x="68.5" y="112">
-            <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="35" fontWeight="500">{resistance !== undefined ? formatResistanceDisplay(resistance).value : '1'} </tspan>
-            <tspan fontFamily="Arial, sans-serif" fontSize="31" fontWeight="700">{resistance !== undefined ? formatResistanceDisplay(resistance).unit : 'kΩ'}</tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="35" fontWeight="500">{resistance !== undefined ? formatResistanceDisplay(resistance).value : '1'} </tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="31" fontWeight="700">{resistance !== undefined ? formatResistanceDisplay(resistance).unit : 'kΩ'}</tspan>
           </text>
         </>
       );
@@ -658,8 +658,8 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           <circle fill="white" cx={wiperVbX} cy="72" r="3.5"/>
           {/* Popisek – nad tělem */}
           <text fill="#041423" textAnchor="middle" x="68.5" y="12">
-            <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="38" fontWeight="500">{resistance !== undefined ? formatResistanceDisplay(resistance).value : '1'} </tspan>
-            <tspan fontFamily="Arial, sans-serif" fontSize="33.5" fontWeight="700">{resistance !== undefined ? formatResistanceDisplay(resistance).unit : 'kΩ'}</tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="38" fontWeight="500">{resistance !== undefined ? formatResistanceDisplay(resistance).value : '1'} </tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="33.5" fontWeight="700">{resistance !== undefined ? formatResistanceDisplay(resistance).unit : 'kΩ'}</tspan>
           </text>
         </>
       );
@@ -776,12 +776,12 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           <line stroke="#9ca3af" strokeWidth="5" strokeLinecap="round" x1="68.5" y1="72" x2="68.5" y2="88"/>
           <circle fill="#6b7280" cx="68.5" cy="72" r="4"/>
           {/* NPN nápis na těle */}
-          <text x="68.5" y="55" textAnchor="middle" fontSize="16" fontFamily="sans-serif" fontWeight="bold" fill="#fff">NPN</text>
+          <text x="68.5" y="55" textAnchor="middle" fontSize="16" fontFamily="'Fenomen Sans', sans-serif" fontWeight="bold" fill="#fff">NPN</text>
           {/* Popisek vývodu B */}
-          <text x="80" y="118" textAnchor="start" fontSize="11" fontFamily="sans-serif" fontWeight="bold" fill="#7c3aed">B</text>
+          <text x="80" y="118" textAnchor="start" fontSize="11" fontFamily="'Fenomen Sans', sans-serif" fontWeight="bold" fill="#7c3aed">B</text>
           {/* Popisky C/E u drátů */}
-          <text x="-8" y="46" textAnchor="middle" fontSize="12" fontFamily="sans-serif" fontWeight="bold" fill="#7c3aed">C</text>
-          <text x="145" y="46" textAnchor="middle" fontSize="12" fontFamily="sans-serif" fontWeight="bold" fill="#7c3aed">E</text>
+          <text x="-8" y="46" textAnchor="middle" fontSize="12" fontFamily="'Fenomen Sans', sans-serif" fontWeight="bold" fill="#7c3aed">C</text>
+          <text x="145" y="46" textAnchor="middle" fontSize="12" fontFamily="'Fenomen Sans', sans-serif" fontWeight="bold" fill="#7c3aed">E</text>
         </>
       );
     }
@@ -963,7 +963,7 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           {bs !== 'off' && !isBroken && (
             <text x="68" y="145" textAnchor="middle"
               fill={bs === 'dim' ? '#d4aa50' : bs === 'bright' ? '#f59e0b' : '#216de8'}
-              fontSize="18" fontFamily="Arial, sans-serif" fontWeight="700" opacity="0.75"
+              fontSize="18" fontFamily="'Fenomen Sans', Arial, sans-serif" fontWeight="700" opacity="0.75"
             >
               {bs === 'dim' ? '○' : bs === 'on' ? '◑' : '●'}
             </text>
@@ -973,7 +973,7 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
             <>
               <circle cx="68" cy="140" r="14" fill="rgba(220,38,38,0.15)" stroke="#dc2626" strokeWidth="2"/>
               <text x="68" y="147" textAnchor="middle"
-                fill="#dc2626" fontSize="24" fontFamily="Arial, sans-serif" fontWeight="900"
+                fill="#dc2626" fontSize="24" fontFamily="'Fenomen Sans', Arial, sans-serif" fontWeight="900"
               >✕</text>
             </>
           )}
@@ -1034,8 +1034,8 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           </g>
           {/* Popisek napětí */}
           <text fill="#216de8" textAnchor="middle" x="35.857" y="128">
-            <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="36" fontWeight="500">{voltage !== undefined ? formatVoltage(voltage) : '4,5'} </tspan>
-            <tspan fontFamily="Arial, sans-serif" fontSize="32" fontWeight="700">V</tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="36" fontWeight="500">{voltage !== undefined ? formatVoltage(voltage) : '4,5'} </tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="32" fontWeight="700">V</tspan>
           </text>
         </>
       );
@@ -1122,8 +1122,8 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           </g>
           {/* Popisek napětí */}
           <text fill="#216de8" textAnchor="middle" x="61" y="128">
-            <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="36" fontWeight="500">{voltage !== undefined ? formatVoltage(voltage) : '9'} </tspan>
-            <tspan fontFamily="Arial, sans-serif" fontSize="32" fontWeight="700">V</tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="36" fontWeight="500">{voltage !== undefined ? formatVoltage(voltage) : '9'} </tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="32" fontWeight="700">V</tspan>
           </text>
         </>
       );
@@ -1210,8 +1210,8 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           </g>
           {/* Popisek napětí */}
           <text fill="#216de8" textAnchor="middle" x="61" y="128">
-            <tspan fontFamily="'Founders Grotesk', Arial, sans-serif" fontSize="36" fontWeight="500">{voltage !== undefined ? formatVoltage(voltage) : '12'} </tspan>
-            <tspan fontFamily="Arial, sans-serif" fontSize="32" fontWeight="700">V</tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="36" fontWeight="500">{voltage !== undefined ? formatVoltage(voltage) : '12'} </tspan>
+            <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="32" fontWeight="700">V</tspan>
           </text>
         </>
       );
@@ -1323,7 +1323,7 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
             x1="22.7996" y1="51.1703" x2="-15.9959" y2="51.1703"/>
           <line fill="none" stroke="#ad0404" strokeLinecap="round" strokeLinejoin="round" strokeWidth="8"
             x1="153.0041" y1="51.1703" x2="118.0041" y2="51.1703"/>
-          <text fill="#216de8" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="30" fontWeight="700" x="68.5" y="62">
+          <text fill="#216de8" textAnchor="middle" fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="30" fontWeight="700" x="68.5" y="62">
             {'?'}
           </text>
         </>
@@ -1594,9 +1594,9 @@ function SchemaSymbol({ type, isOn, bulbState, current = 0, voltage, resistance,
           <line x1={npnEX} y1={npnEY} x2={L} y2="0" stroke={C} strokeWidth="2" vectorEffect="non-scaling-stroke" />
           <line x1="0" y1={npnBY} x2="0" y2={L} stroke={C} strokeWidth="2" vectorEffect="non-scaling-stroke" />
           {/* Popisky vývodů C, B, E */}
-          <text x={npnCX - 2} y={npnCY - 3} textAnchor="end" fontSize="7" fontFamily="sans-serif" fontWeight="bold" fill={C}>C</text>
-          <text x={npnEX + 2} y={npnEY - 3} textAnchor="start" fontSize="7" fontFamily="sans-serif" fontWeight="bold" fill={C}>E</text>
-          <text x="5" y={L - 1} textAnchor="start" fontSize="7" fontFamily="sans-serif" fontWeight="bold" fill={C}>B</text>
+          <text x={npnCX - 2} y={npnCY - 3} textAnchor="end" fontSize="7" fontFamily="'Fenomen Sans', sans-serif" fontWeight="bold" fill={C}>C</text>
+          <text x={npnEX + 2} y={npnEY - 3} textAnchor="start" fontSize="7" fontFamily="'Fenomen Sans', sans-serif" fontWeight="bold" fill={C}>E</text>
+          <text x="5" y={L - 1} textAnchor="start" fontSize="7" fontFamily="'Fenomen Sans', sans-serif" fontWeight="bold" fill={C}>B</text>
         </g>
       );
     }
@@ -1616,7 +1616,7 @@ function RealisticSymbol({ type, isOn }: { type: ComponentType; isOn: boolean })
           <rect x="-16" y="-11" width="28" height="22" rx="2" fill="#2d2d2d" stroke="#444" strokeWidth="1" />
           <rect x="12" y="-6" width="5" height="12" rx="1.5" fill="#777" />
           <rect x="-14" y="-9" width="7" height="18" rx="1" fill="#dc2626" opacity="0.9" />
-          <text x="1" y="3" textAnchor="middle" fontSize="7" fill="#bbb" fontFamily="sans-serif" fontWeight="bold">{type === 'battery3' ? '12V' : type === 'battery2' ? '9V' : '4.5V'}</text>
+          <text x="1" y="3" textAnchor="middle" fontSize="7" fill="#bbb" fontFamily="'Fenomen Sans', sans-serif" fontWeight="bold">{type === 'battery3' ? '12V' : type === 'battery2' ? '9V' : '4.5V'}</text>
           <line x1="17" y1="0" x2={L} y2="0" stroke="#666" strokeWidth="2" />
         </g>
       );
@@ -1697,7 +1697,7 @@ function RealisticSymbol({ type, isOn }: { type: ComponentType; isOn: boolean })
           <rect x="-15" y="-15" width="30" height="30" rx="3" fill="#fafaf8" stroke="#666" strokeWidth="1.5" />
           <rect x="-11" y="-11" width="22" height="16" rx="1" fill="#dcfce7" stroke="#bbb" strokeWidth="0.5" />
           <text x="0" y="1" textAnchor="middle" fontSize="11" fill="#166534" fontFamily="monospace" fontWeight="bold">A</text>
-          <text x="0" y="12" textAnchor="middle" fontSize="9" fill="#555" fontFamily="sans-serif" fontWeight="bold">A</text>
+          <text x="0" y="12" textAnchor="middle" fontSize="9" fill="#555" fontFamily="'Fenomen Sans', sans-serif" fontWeight="bold">A</text>
           <line x1="15" y1="0" x2={L} y2="0" stroke="#666" strokeWidth="2" />
         </g>
       );
@@ -1708,7 +1708,7 @@ function RealisticSymbol({ type, isOn }: { type: ComponentType; isOn: boolean })
           <rect x="-15" y="-15" width="30" height="30" rx="3" fill="#fafaf8" stroke="#666" strokeWidth="1.5" />
           <rect x="-11" y="-11" width="22" height="16" rx="1" fill="#dcfce7" stroke="#bbb" strokeWidth="0.5" />
           <text x="0" y="1" textAnchor="middle" fontSize="11" fill="#166534" fontFamily="monospace" fontWeight="bold">V</text>
-          <text x="0" y="12" textAnchor="middle" fontSize="9" fill="#555" fontFamily="sans-serif" fontWeight="bold">V</text>
+          <text x="0" y="12" textAnchor="middle" fontSize="9" fill="#555" fontFamily="'Fenomen Sans', sans-serif" fontWeight="bold">V</text>
           <line x1="15" y1="0" x2={L} y2="0" stroke="#666" strokeWidth="2" />
         </g>
       );

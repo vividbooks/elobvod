@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { ImagePlus, X } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { ArrowLeft, ChevronDown, Copy, ExternalLink, ImagePlus, Library, X } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -14,6 +14,7 @@ import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import { CIRCUIT_ASSIGNMENTS_TABLE } from '@/lib/circuitTables';
 import { assignmentPublicUrl } from '../../utils/appUrl';
 import { ShareModal } from '../ShareModal';
+import { TASK_LIBRARY, resolveLibraryImageSrc, resolveStudentLink } from './taskLibrary';
 import { toast } from 'sonner';
 
 const MAX_IMAGE_BYTES = 1_500_000;
@@ -44,6 +45,37 @@ export function TasksSheet({ open, onOpenChange }: Props) {
   const [dragActive, setDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  /** instruction_image z DB podle UUID zadani (pro nahled v knihovne) */
+  const [libraryDbImages, setLibraryDbImages] = useState<Record<string, string | null>>({});
+
+  useEffect(() => {
+    if (!libraryOpen || !isSupabaseConfigured) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+    const ids = [
+      ...new Set(
+        TASK_LIBRARY.map(e => e.assignmentId?.trim()).filter((v): v is string => Boolean(v)),
+      ),
+    ];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from(CIRCUIT_ASSIGNMENTS_TABLE)
+        .select('id, instruction_image')
+        .in('id', ids);
+      if (cancelled || error || !data) return;
+      const next: Record<string, string | null> = {};
+      for (const row of data as { id: string; instruction_image: string | null }[]) {
+        next[row.id] = row.instruction_image;
+      }
+      setLibraryDbImages(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [libraryOpen]);
 
   const resetForm = () => {
     setInstruction('');
@@ -78,6 +110,15 @@ export function TasksSheet({ open, onOpenChange }: Props) {
     setImagePreview(null);
     setImageData(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const copyText = async (label: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} zkopírováno`);
+    } catch {
+      toast.error('Kopírování se nepovedlo');
+    }
   };
 
   const handleCreate = async () => {
@@ -122,118 +163,236 @@ export function TasksSheet({ open, onOpenChange }: Props) {
 
   return (
     <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-[min(100vw-16px,440px)] !max-w-[min(100vw-16px,440px)] overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Úkoly</SheetTitle>
-            <SheetDescription>
-              Vytvoř zadání s textem a volitelným obrázkem. Odkaz pošli studentům; jejich odevzdání uvidíš na odkazu z
-              jejich odpovědi.
-            </SheetDescription>
-          </SheetHeader>
+      <Sheet
+        open={open}
+               onOpenChange={v => {
+          if (!v) {
+            setLibraryOpen(false);
+            setLibraryDbImages({});
+          }
+          onOpenChange(v);
+        }}
+      >
+        <SheetContent
+          side="right"
+          className="flex w-[min(100vw-16px,440px)] !max-w-[min(100vw-16px,440px)] flex-col gap-0 overflow-y-auto p-0"
+        >
+          {!libraryOpen ? (
+            <>
+              <SheetHeader className="px-4 pt-4 pr-12">
+                <SheetTitle>Úkoly</SheetTitle>
+                <SheetDescription>
+                  Vytvoř zadání s textem a volitelným obrázkem. Odkaz pošli studentům; jejich odevzdání uvidíš na odkazu z
+                  jejich odpovědi.
+                </SheetDescription>
+              </SheetHeader>
 
-          <div className="flex flex-col gap-4 px-4 pb-6">
-            {!isSupabaseConfigured && (
-              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                V projektu chybí proměnné prostředí Supabase. Zkopíruj{' '}
-                <code className="text-xs">.env.example</code> na <code className="text-xs">.env</code> a doplň URL a
-                anon klíč. SQL schéma je v <code className="text-xs">supabase/schema.sql</code>.
-              </p>
-            )}
+              <div className="flex flex-col gap-4 px-4 pb-3">
+                {!isSupabaseConfigured && (
+                  <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    V projektu chybí proměnné prostředí Supabase. Zkopíruj{' '}
+                    <code className="text-xs">.env.example</code> na <code className="text-xs">.env</code> a doplň URL a
+                    anon klíč. SQL schéma je v <code className="text-xs">supabase/schema.sql</code>.
+                  </p>
+                )}
 
-            <div className="space-y-2">
-              <Label htmlFor="task-instruction">Text zadání</Label>
-              <Textarea
-                id="task-instruction"
-                value={instruction}
-                onChange={e => setInstruction(e.target.value)}
-                placeholder="Např. Sestroj obvod se dvěma žárovkami …"
-                rows={6}
-                className="resize-y min-h-[120px]"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="task-image">Obrázek k zadání (volitelné)</Label>
-              <input
-                ref={fileInputRef}
-                id="task-image"
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={e => onPickImage(e.target.files?.[0])}
-              />
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => fileInputRef.current?.click()}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    fileInputRef.current?.click();
-                  }
-                }}
-                onDragEnter={e => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setDragActive(true);
-                }}
-                onDragOver={e => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onDragLeave={e => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragActive(false);
-                }}
-                onDrop={e => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setDragActive(false);
-                  onPickImage(e.dataTransfer.files?.[0]);
-                }}
-                className={[
-                  'flex min-h-[140px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2',
-                  dragActive
-                    ? 'border-indigo-400 bg-indigo-50/80 text-indigo-900'
-                    : 'border-zinc-300 bg-zinc-50/50 text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50',
-                ].join(' ')}
-              >
-                <ImagePlus
-                  className={`size-9 stroke-[1.5] ${dragActive ? 'text-indigo-500' : 'text-zinc-400'}`}
-                  aria-hidden
-                />
-                <div className="text-sm font-medium text-zinc-700">
-                  Přetáhni obrázek sem
-                </div>
-                <div className="text-xs text-zinc-500">
-                  nebo klikni a vyber soubor · JPG, PNG, WebP · max. 1,5&nbsp;MB
-                </div>
-              </div>
-              {imagePreview && (
-                <div className="relative inline-block max-w-full">
-                  <img
-                    src={imagePreview}
-                    alt="Náhled zadání"
-                    className="max-h-48 w-full rounded-lg border border-zinc-200 object-contain"
+                <div className="space-y-2">
+                  <Label htmlFor="task-instruction">Text zadání</Label>
+                  <Textarea
+                    id="task-instruction"
+                    value={instruction}
+                    onChange={e => setInstruction(e.target.value)}
+                    placeholder="Např. Sestroj obvod se dvěma žárovkami …"
+                    rows={6}
+                    className="resize-y min-h-[120px]"
                   />
-                  <button
-                    type="button"
-                    onClick={clearImage}
-                    className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-zinc-900/75 text-white shadow-md transition-colors hover:bg-zinc-900"
-                    title="Odebrat obrázek"
-                  >
-                    <X size={16} aria-hidden />
-                  </button>
                 </div>
-              )}
-            </div>
 
-            <Button type="button" onClick={handleCreate} disabled={busy || !instruction.trim()} className="w-full">
-              {busy ? 'Ukládám…' : 'Vytvořit zadání'}
-            </Button>
-          </div>
+                <div className="space-y-2">
+                  <Label htmlFor="task-image">Obrázek k zadání (volitelné)</Label>
+                  <input
+                    ref={fileInputRef}
+                    id="task-image"
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={e => onPickImage(e.target.files?.[0])}
+                  />
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        fileInputRef.current?.click();
+                      }
+                    }}
+                    onDragEnter={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragActive(true);
+                    }}
+                    onDragOver={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDragLeave={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragActive(false);
+                    }}
+                    onDrop={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragActive(false);
+                      onPickImage(e.dataTransfer.files?.[0]);
+                    }}
+                    className={[
+                      'flex min-h-[140px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2',
+                      dragActive
+                        ? 'border-indigo-400 bg-indigo-50/80 text-indigo-900'
+                        : 'border-zinc-300 bg-zinc-50/50 text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50',
+                    ].join(' ')}
+                  >
+                    <ImagePlus
+                      className={`size-9 stroke-[1.5] ${dragActive ? 'text-indigo-500' : 'text-zinc-400'}`}
+                      aria-hidden
+                    />
+                    <div className="text-sm font-medium text-zinc-700">
+                      Přetáhni obrázek sem
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      nebo klikni a vyber soubor · JPG, PNG, WebP · max. 1,5&nbsp;MB
+                    </div>
+                  </div>
+                  {imagePreview && (
+                    <div className="relative inline-block max-w-full">
+                      <img
+                        src={imagePreview}
+                        alt="Náhled zadání"
+                        className="max-h-48 w-full rounded-lg border border-zinc-200 object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={clearImage}
+                        className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-zinc-900/75 text-white shadow-md transition-colors hover:bg-zinc-900"
+                        title="Odebrat obrázek"
+                      >
+                        <X size={16} aria-hidden />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <Button type="button" onClick={handleCreate} disabled={busy || !instruction.trim()} className="w-full">
+                  {busy ? 'Ukládám…' : 'Vytvořit zadání'}
+                </Button>
+              </div>
+
+              <div className="mt-auto px-4 pb-6 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setLibraryOpen(true)}
+                  aria-expanded={false}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/90 px-4 py-3 text-sm font-semibold text-zinc-800 shadow-sm transition-colors hover:bg-zinc-100"
+                >
+                  <Library className="size-4 text-zinc-600 shrink-0" aria-hidden />
+                  Knihovna úkolů
+                  <ChevronDown className="size-4 text-zinc-500 shrink-0 opacity-80" aria-hidden />
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <SheetHeader className="border-b border-zinc-100 px-4 pt-4 pb-3 pr-12">
+                <div className="flex items-center gap-2">
+                  <Library className="size-5 text-zinc-600 shrink-0" aria-hidden />
+                  <SheetTitle className="text-left">Knihovna úkolů</SheetTitle>
+                </div>
+                <SheetDescription className="text-left">
+                  Přednastavená zadání. Seznam upravíš v{' '}
+                  <code className="text-[11px]">taskLibrary.ts</code>.
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                {TASK_LIBRARY.length === 0 ? (
+                  <p className="text-sm text-zinc-500 leading-relaxed">
+                    Zatím žádné položky. Uprav{' '}
+                    <code className="rounded bg-zinc-100 px-1 text-xs">taskLibrary.ts</code>.
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-3">
+                    {TASK_LIBRARY.map(entry => {
+                      const link = resolveStudentLink(entry);
+                      const id = entry.assignmentId?.trim();
+                      const fromDb = id ? libraryDbImages[id] : undefined;
+                      const imgSrc =
+                        resolveLibraryImageSrc(entry.imageUrl) ??
+                        (fromDb && fromDb.trim() ? fromDb : null);
+                      return (
+                        <li
+                          key={entry.key}
+                          className="rounded-xl border border-zinc-200 bg-white px-3 py-3 shadow-sm"
+                        >
+                          <div className="flex items-stretch gap-3">
+                            <div className="min-w-0 flex-1 flex flex-col justify-between gap-3">
+                              <div className="text-[1.1375rem] font-semibold text-zinc-900 leading-snug">
+                                {entry.title}
+                              </div>
+                              {link ? (
+                                <div className="flex flex-col items-start gap-1.5">
+                                  <a
+                                    href={link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-indigo-700 shadow-sm transition-colors hover:bg-indigo-50"
+                                  >
+                                    <ExternalLink className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                                    Otevřít
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => void copyText('Odkaz pro zadání', link)}
+                                    className="inline-flex items-center justify-center gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs font-medium text-zinc-800 transition-colors hover:bg-zinc-100"
+                                  >
+                                    <Copy className="size-3.5 shrink-0 opacity-70" aria-hidden />
+                                    Odkaz pro zadání
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                            {imgSrc ? (
+                              <div className="shrink-0 w-[min(48.96vw,11.475rem)] h-[min(48.96vw,11.475rem)] overflow-hidden rounded-lg bg-white">
+                                <img
+                                  src={imgSrc}
+                                  alt=""
+                                  className="h-full w-full object-contain object-center"
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div className="shrink-0 border-t border-zinc-100 bg-white px-4 py-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={() => setLibraryOpen(false)}
+                >
+                  <ArrowLeft className="size-4" aria-hidden />
+                  Zpět k vlastnímu zadání
+                </Button>
+              </div>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
 

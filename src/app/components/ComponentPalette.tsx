@@ -457,7 +457,7 @@ export function ComponentPalette({ tool, onToolChange, onClearAll, navigationOnl
               textAnchor="middle"
               fontSize="13"
               fontWeight="600"
-              fontFamily="system-ui, sans-serif"
+              fontFamily="'Fenomen Sans', system-ui, sans-serif"
               fill={isMeterActive ? '#fff' : '#52525b'}
             >M</text>
           </svg>
