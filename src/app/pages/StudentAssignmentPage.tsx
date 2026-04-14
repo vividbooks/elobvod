@@ -21,6 +21,7 @@ import { Label } from '../components/ui/label';
 import { getSupabase } from '@/lib/supabase';
 import { CIRCUIT_ASSIGNMENTS_TABLE, CIRCUIT_SUBMISSIONS_TABLE } from '@/lib/circuitTables';
 import { submissionPublicUrl } from '../utils/appUrl';
+import { assignmentInstructionDisplay } from '../utils/instructionSteps';
 import { useIsTouch, useToolbarScale } from '../hooks/editorChrome';
 import { toast } from 'sonner';
 
@@ -51,6 +52,7 @@ type AssignmentRow = {
   id: string;
   instruction_text: string;
   instruction_image: string | null;
+  instruction_steps?: unknown;
 };
 
 export default function StudentAssignmentPage() {
@@ -253,6 +255,8 @@ export default function StudentAssignmentPage() {
     );
   }
 
+  const instructionView = assignmentInstructionDisplay(assignment);
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white">
       <Toaster position="bottom-center" />
@@ -362,14 +366,35 @@ export default function StudentAssignmentPage() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
-              <p className="text-lg leading-relaxed text-zinc-800 whitespace-pre-wrap">{assignment.instruction_text || '—'}</p>
-              {assignment.instruction_image ? (
-                <img
-                  src={assignment.instruction_image}
-                  alt="Zadání"
-                  className="rounded-lg border border-zinc-200 w-full object-contain max-h-[40vh]"
-                />
-              ) : null}
+              {instructionView.kind === 'steps' ? (
+                <ol className="m-0 list-decimal space-y-4 pl-5 text-lg leading-relaxed text-zinc-800 marker:font-semibold marker:text-zinc-500">
+                  {instructionView.steps.map((s, i) => (
+                    <li key={i} className="space-y-2 pl-1">
+                      <div className="whitespace-pre-wrap">{s.text}</div>
+                      {s.image ? (
+                        <img
+                          src={s.image}
+                          alt=""
+                          className="rounded-lg border border-zinc-200 w-full object-contain max-h-[40vh]"
+                        />
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <>
+                  <p className="text-lg leading-relaxed text-zinc-800 whitespace-pre-wrap">
+                    {instructionView.text || '—'}
+                  </p>
+                  {assignment.instruction_image ? (
+                    <img
+                      src={assignment.instruction_image}
+                      alt="Zadání"
+                      className="rounded-lg border border-zinc-200 w-full object-contain max-h-[40vh]"
+                    />
+                  ) : null}
+                </>
+              )}
               {studentName ? (
                 <div className="text-xs text-zinc-500 pt-1 border-t border-zinc-200">Student: {studentName}</div>
               ) : (

@@ -8,6 +8,7 @@ import { Toaster } from '../components/ui/sonner';
 import { getSupabase } from '@/lib/supabase';
 import { CIRCUIT_ASSIGNMENTS_TABLE, CIRCUIT_SUBMISSIONS_TABLE } from '@/lib/circuitTables';
 import { decodeCircuit } from '../utils/circuitUrl';
+import { assignmentInstructionDisplay } from '../utils/instructionSteps';
 import { useIsTouch, useToolbarScale } from '../hooks/editorChrome';
 
 type SubmissionRow = {
@@ -20,6 +21,7 @@ type SubmissionRow = {
 type AssignmentRow = {
   instruction_text: string;
   instruction_image: string | null;
+  instruction_steps?: unknown;
 };
 
 export default function SubmissionViewPage() {
@@ -65,7 +67,7 @@ export default function SubmissionViewPage() {
 
       const { data: asg } = await supabase
         .from(CIRCUIT_ASSIGNMENTS_TABLE)
-        .select('instruction_text, instruction_image')
+        .select('instruction_text, instruction_image, instruction_steps')
         .eq('id', (sub as SubmissionRow).assignment_id)
         .maybeSingle();
 
@@ -98,6 +100,8 @@ export default function SubmissionViewPage() {
       </div>
     );
   }
+
+  const instructionView = assignment ? assignmentInstructionDisplay(assignment) : null;
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-white">
@@ -153,17 +157,36 @@ export default function SubmissionViewPage() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
-          {assignment && (
+          {assignment && instructionView && (
             <>
               <div className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Zadání</div>
-              <p className="text-sm text-zinc-800 whitespace-pre-wrap">{assignment.instruction_text || '—'}</p>
-              {assignment.instruction_image ? (
-                <img
-                  src={assignment.instruction_image}
-                  alt="Zadání"
-                  className="rounded-lg border border-zinc-200 w-full object-contain max-h-[40vh]"
-                />
-              ) : null}
+              {instructionView.kind === 'steps' ? (
+                <ol className="m-0 list-decimal space-y-3 pl-4 text-sm leading-relaxed text-zinc-800 marker:text-zinc-500">
+                  {instructionView.steps.map((s, i) => (
+                    <li key={i} className="space-y-2 pl-0.5">
+                      <div className="whitespace-pre-wrap">{s.text}</div>
+                      {s.image ? (
+                        <img
+                          src={s.image}
+                          alt=""
+                          className="rounded-lg border border-zinc-200 w-full object-contain max-h-[40vh]"
+                        />
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <>
+                  <p className="text-sm text-zinc-800 whitespace-pre-wrap">{instructionView.text || '—'}</p>
+                  {assignment.instruction_image ? (
+                    <img
+                      src={assignment.instruction_image}
+                      alt="Zadání"
+                      className="rounded-lg border border-zinc-200 w-full object-contain max-h-[40vh]"
+                    />
+                  ) : null}
+                </>
+              )}
             </>
           )}
         </div>

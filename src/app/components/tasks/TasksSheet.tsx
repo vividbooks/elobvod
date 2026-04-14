@@ -1,5 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Check, ChevronDown, Copy, ExternalLink, ImagePlus, Library, Link, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  ImagePlus,
+  Library,
+  Link,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -14,9 +26,15 @@ import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import { CIRCUIT_ASSIGNMENTS_TABLE } from '@/lib/circuitTables';
 import { assignmentPublicUrl } from '../../utils/appUrl';
 import { TASK_LIBRARY, resolveLibraryImageSrc, resolveStudentLink } from './taskLibrary';
+import {
+  firstStepImage,
+  instructionStepsToFallbackText,
+} from '@/app/utils/instructionSteps';
 import { toast } from 'sonner';
 
 const MAX_IMAGE_BYTES = 1_500_000;
+
+type StepDraft = { text: string; image: string | null };
 
 function formatDbError(e: unknown): string {
   if (!e || typeof e !== "object") return "Neznámá chyba";
@@ -37,12 +55,9 @@ interface Props {
 }
 
 export function TasksSheet({ open, onOpenChange }: Props) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const createdLinkInputRef = useRef<HTMLInputElement>(null);
-  const [instruction, setInstruction] = useState('');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageData, setImageData] = useState<string | null>(null);
-  const [dragActive, setDragActive] = useState(false);
+  const [steps, setSteps] = useState<StepDraft[]>([{ text: '', image: null }]);
+  const [dragActiveStep, setDragActiveStep] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -86,15 +101,33 @@ export function TasksSheet({ open, onOpenChange }: Props) {
   }, [createdUrl]);
 
   const resetForm = () => {
-    setInstruction('');
-    setImagePreview(null);
-    setImageData(null);
+    setSteps([{ text: '', image: null }]);
+    setDragActiveStep(null);
   };
 
-  const onPickImage = (file: File | undefined) => {
+  const setStepTextAt = (index: number, value: string) => {
+    setSteps(prev => prev.map((s, i) => (i === index ? { ...s, text: value } : s)));
+  };
+
+  const setStepImageAt = (index: number, dataUrl: string | null) => {
+    setSteps(prev => prev.map((s, i) => (i === index ? { ...s, image: dataUrl } : s)));
+  };
+
+  const addStep = () => setSteps(prev => [...prev, { text: '', image: null }]);
+
+  const removeStep = (index: number) => {
+    setSteps(prev => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+    setDragActiveStep(d => {
+      if (d == null) return null;
+      if (d === index) return null;
+      if (d > index) return d - 1;
+      return d;
+    });
+  };
+
+  const onPickStepImage = (index: number, file: File | undefined) => {
     if (!file) {
-      setImagePreview(null);
-      setImageData(null);
+      setStepImageAt(index, null);
       return;
     }
     if (!file.type.startsWith('image/')) {
@@ -107,17 +140,9 @@ export function TasksSheet({ open, onOpenChange }: Props) {
     }
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setImageData(dataUrl);
-      setImagePreview(dataUrl);
+      setStepImageAt(index, reader.result as string);
     };
     reader.readAsDataURL(file);
-  };
-
-  const clearImage = () => {
-    setImagePreview(null);
-    setImageData(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const copyText = async (label: string, text: string) => {
@@ -135,12 +160,19 @@ export function TasksSheet({ open, onOpenChange }: Props) {
       toast.error('Supabase klient není k dispozici.');
       return;
     }
+    const cleaned = steps
+      .map(s => ({ text: s.text.trim(), image: s.image }))
+      .filter(s => s.text.length > 0);
+    if (cleaned.length === 0) {
+      toast.error('Vyplň aspoň jeden krok zadání.');
+      return;
+    }
     setBusy(true);
     try {
-      const text = instruction.trim();
       const payload = {
-        instruction_text: text,
-        instruction_image: imageData ?? null,
+        instruction_text: instructionStepsToFallbackText(cleaned.map(s => s.text)),
+        instruction_steps: cleaned.map(s => (s.image ? { text: s.text, image: s.image } : { text: s.text })),
+        instruction_image: firstStepImage(cleaned) ?? null,
       };
       const { data, error } = await supabase.from(CIRCUIT_ASSIGNMENTS_TABLE).insert(payload).select("id");
 
@@ -192,8 +224,8 @@ export function TasksSheet({ open, onOpenChange }: Props) {
               <SheetHeader className="px-4 pt-4 pr-12">
                 <SheetTitle>Úkoly</SheetTitle>
                 <SheetDescription>
-                  Vytvoř zadání s textem a volitelným obrázkem. Odkaz pošli studentům; jejich odevzdání uvidíš na odkazu z
-                  jejich odpovědi.
+                  Ke každému kroku můžeš přidat vlastní obrázek. Odkaz pošli studentům; jejich odevzdání uvidíš na odkazu
+                  z jejich odpovědi.
                 </SheetDescription>
               </SheetHeader>
 
@@ -263,96 +295,140 @@ export function TasksSheet({ open, onOpenChange }: Props) {
 
               <div className="flex flex-col gap-4 px-4 pb-3">
 
-                <div className="space-y-2">
-                  <Label htmlFor="task-instruction">Text zadání</Label>
-                  <Textarea
-                    id="task-instruction"
-                    value={instruction}
-                    onChange={e => setInstruction(e.target.value)}
-                    placeholder="Např. Sestroj obvod se dvěma žárovkami …"
-                    rows={6}
-                    className="resize-y min-h-[120px]"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="task-image">Obrázek k zadání (volitelné)</Label>
-                  <input
-                    ref={fileInputRef}
-                    id="task-image"
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    onChange={e => onPickImage(e.target.files?.[0])}
-                  />
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => fileInputRef.current?.click()}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        fileInputRef.current?.click();
-                      }
-                    }}
-                    onDragEnter={e => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDragActive(true);
-                    }}
-                    onDragOver={e => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    onDragLeave={e => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragActive(false);
-                    }}
-                    onDrop={e => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDragActive(false);
-                      onPickImage(e.dataTransfer.files?.[0]);
-                    }}
-                    className={[
-                      'flex min-h-[140px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2',
-                      dragActive
-                        ? 'border-indigo-400 bg-indigo-50/80 text-indigo-900'
-                        : 'border-zinc-300 bg-zinc-50/50 text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50',
-                    ].join(' ')}
-                  >
-                    <ImagePlus
-                      className={`size-9 stroke-[1.5] ${dragActive ? 'text-indigo-500' : 'text-zinc-400'}`}
-                      aria-hidden
-                    />
-                    <div className="text-sm font-medium text-zinc-700">
-                      Přetáhni obrázek sem
-                    </div>
-                    <div className="text-xs text-zinc-500">
-                      nebo klikni a vyber soubor · JPG, PNG, WebP · max. 1,5&nbsp;MB
-                    </div>
+                <div className="space-y-3">
+                  <div className="flex items-end justify-between gap-2">
+                    <Label className="text-base">Kroky zadání</Label>
+                    <button
+                      type="button"
+                      onClick={addStep}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-800 shadow-sm transition-colors hover:bg-zinc-50"
+                    >
+                      <Plus className="size-3.5" aria-hidden />
+                      Přidat krok
+                    </button>
                   </div>
-                  {imagePreview && (
-                    <div className="relative inline-block max-w-full">
-                      <img
-                        src={imagePreview}
-                        alt="Náhled zadání"
-                        className="max-h-48 w-full rounded-lg border border-zinc-200 object-contain"
-                      />
-                      <button
-                        type="button"
-                        onClick={clearImage}
-                        className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-zinc-900/75 text-white shadow-md transition-colors hover:bg-zinc-900"
-                        title="Odebrat obrázek"
-                      >
-                        <X size={16} aria-hidden />
-                      </button>
-                    </div>
-                  )}
+                  <p className="m-0 text-xs text-zinc-500 leading-snug">
+                    Každý krok se studentům zobrazí jako očíslovaný bod; obrázek u kroku je volitelný.
+                  </p>
+                  <ul className="m-0 flex list-none flex-col gap-3 p-0">
+                    {steps.map((step, index) => {
+                      const stepDrag = dragActiveStep === index;
+                      return (
+                        <li key={index} className="rounded-xl border border-zinc-200/90 bg-zinc-50/40 p-3">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                              Krok {index + 1}
+                            </span>
+                            {steps.length > 1 ? (
+                              <button
+                                type="button"
+                                onClick={() => removeStep(index)}
+                                className="flex size-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                                title="Odebrat krok"
+                                aria-label={`Odebrat krok ${index + 1}`}
+                              >
+                                <Trash2 className="size-4" aria-hidden />
+                              </button>
+                            ) : null}
+                          </div>
+                          <Textarea
+                            id={index === 0 ? 'task-step-0' : undefined}
+                            value={step.text}
+                            onChange={e => setStepTextAt(index, e.target.value)}
+                            placeholder="Např. Sestroj obvod se dvěma žárovkami …"
+                            rows={4}
+                            className="resize-y min-h-[88px] bg-white"
+                          />
+                          <div className="mt-3 space-y-2">
+                            <Label htmlFor={`task-step-img-${index}`} className="text-xs text-zinc-600">
+                              Obrázek ke kroku (volitelné)
+                            </Label>
+                            <input
+                              id={`task-step-img-${index}`}
+                              type="file"
+                              accept="image/*"
+                              className="sr-only"
+                              onChange={e => {
+                                onPickStepImage(index, e.target.files?.[0]);
+                                e.target.value = '';
+                              }}
+                            />
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => document.getElementById(`task-step-img-${index}`)?.click()}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  document.getElementById(`task-step-img-${index}`)?.click();
+                                }
+                              }}
+                              onDragEnter={e => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDragActiveStep(index);
+                              }}
+                              onDragOver={e => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onDragLeave={e => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                  setDragActiveStep(d => (d === index ? null : d));
+                                }
+                              }}
+                              onDrop={e => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDragActiveStep(null);
+                                onPickStepImage(index, e.dataTransfer.files?.[0]);
+                              }}
+                              className={[
+                                'flex min-h-[100px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-4 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1',
+                                stepDrag
+                                  ? 'border-indigo-400 bg-indigo-50/80 text-indigo-900'
+                                  : 'border-zinc-300 bg-white/80 text-zinc-600 hover:border-zinc-400 hover:bg-white',
+                              ].join(' ')}
+                            >
+                              <ImagePlus
+                                className={`size-7 stroke-[1.5] ${stepDrag ? 'text-indigo-500' : 'text-zinc-400'}`}
+                                aria-hidden
+                              />
+                              <div className="text-xs font-medium text-zinc-700">Přidat obrázek</div>
+                              <div className="text-[11px] text-zinc-500">max. 1,5&nbsp;MB</div>
+                            </div>
+                            {step.image ? (
+                              <div className="relative inline-block max-w-full">
+                                <img
+                                  src={step.image}
+                                  alt={`Náhled kroku ${index + 1}`}
+                                  className="max-h-40 w-full rounded-lg border border-zinc-200 object-contain"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setStepImageAt(index, null)}
+                                  className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-zinc-900/75 text-white shadow-md transition-colors hover:bg-zinc-900"
+                                  title="Odebrat obrázek"
+                                >
+                                  <X size={16} aria-hidden />
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
 
-                <Button type="button" onClick={handleCreate} disabled={busy || !instruction.trim()} className="w-full">
+                <Button
+                  type="button"
+                  onClick={handleCreate}
+                  disabled={busy || !steps.some(s => s.text.trim())}
+                  className="w-full"
+                >
                   {busy ? 'Ukládám…' : 'Vytvořit zadání'}
                 </Button>
               </div>

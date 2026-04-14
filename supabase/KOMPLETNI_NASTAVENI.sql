@@ -6,11 +6,13 @@ create table if not exists public.circuit_assignments (
   id uuid primary key default gen_random_uuid(),
   instruction_text text not null default '',
   instruction_image text,
+  instruction_steps jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 
 alter table public.circuit_assignments add column if not exists instruction_text text not null default '';
 alter table public.circuit_assignments add column if not exists instruction_image text;
+alter table public.circuit_assignments add column if not exists instruction_steps jsonb not null default '[]'::jsonb;
 alter table public.circuit_assignments add column if not exists created_at timestamptz not null default now();
 
 create table if not exists public.circuit_submissions (
