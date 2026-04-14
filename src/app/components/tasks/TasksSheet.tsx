@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, ChevronDown, Copy, ExternalLink, ImagePlus, Library, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Copy, ExternalLink, ImagePlus, Library, Link, X } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -10,10 +10,9 @@ import {
 import { Textarea } from '../ui/textarea';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
-import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
+import { getSupabase, isSupabaseConfigured, SUPABASE_ENV_SETUP_SHORT } from '@/lib/supabase';
 import { CIRCUIT_ASSIGNMENTS_TABLE } from '@/lib/circuitTables';
 import { assignmentPublicUrl } from '../../utils/appUrl';
-import { ShareModal } from '../ShareModal';
 import { TASK_LIBRARY, resolveLibraryImageSrc, resolveStudentLink } from './taskLibrary';
 import { toast } from 'sonner';
 
@@ -39,6 +38,7 @@ interface Props {
 
 export function TasksSheet({ open, onOpenChange }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const createdLinkInputRef = useRef<HTMLInputElement>(null);
   const [instruction, setInstruction] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageData, setImageData] = useState<string | null>(null);
@@ -48,6 +48,7 @@ export function TasksSheet({ open, onOpenChange }: Props) {
   const [libraryOpen, setLibraryOpen] = useState(false);
   /** instruction_image z DB podle UUID zadani (pro nahled v knihovne) */
   const [libraryDbImages, setLibraryDbImages] = useState<Record<string, string | null>>({});
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     if (!libraryOpen || !isSupabaseConfigured) return;
@@ -76,6 +77,13 @@ export function TasksSheet({ open, onOpenChange }: Props) {
       cancelled = true;
     };
   }, [libraryOpen]);
+
+  useEffect(() => {
+    if (!createdUrl) return;
+    setLinkCopied(false);
+    const t = window.setTimeout(() => createdLinkInputRef.current?.select(), 0);
+    return () => window.clearTimeout(t);
+  }, [createdUrl]);
 
   const resetForm = () => {
     setInstruction('');
@@ -124,7 +132,7 @@ export function TasksSheet({ open, onOpenChange }: Props) {
   const handleCreate = async () => {
     const supabase = getSupabase();
     if (!supabase) {
-      toast.error('Supabase není nastavený – doplň VITE_SUPABASE_URL a VITE_SUPABASE_ANON_KEY.');
+      toast.error(SUPABASE_ENV_SETUP_SHORT, { duration: 12_000 });
       return;
     }
     setBusy(true);
@@ -169,6 +177,8 @@ export function TasksSheet({ open, onOpenChange }: Props) {
           if (!v) {
             setLibraryOpen(false);
             setLibraryDbImages({});
+            setCreatedUrl(null);
+            setLinkCopied(false);
           }
           onOpenChange(v);
         }}
@@ -187,13 +197,89 @@ export function TasksSheet({ open, onOpenChange }: Props) {
                 </SheetDescription>
               </SheetHeader>
 
+              {createdUrl ? (
+                <div className="mx-4 mb-1 flex flex-col gap-3 rounded-2xl border border-zinc-200/90 bg-[#f5f4f8] p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2 text-[#1e1b4b]">
+                      <Link className="size-4 shrink-0" aria-hidden />
+                      <span className="text-[15px] font-bold leading-tight">Odkaz na zadání</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatedUrl(null);
+                        setLinkCopied(false);
+                      }}
+                      className="flex size-8 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-200/80 hover:text-zinc-600"
+                      title="Skrýt odkaz"
+                      aria-label="Skrýt odkaz"
+                    >
+                      <X className="size-4" aria-hidden />
+                    </button>
+                  </div>
+                  <p className="m-0 text-[13px] leading-snug text-zinc-600">
+                    Zkopíruj odkaz a pošli ho studentům. Po vyplnění jména uvidí zadání vpravo a mohou tvořit obvod.
+                  </p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <input
+                      ref={createdLinkInputRef}
+                      readOnly
+                      value={createdUrl}
+                      onClick={() => createdLinkInputRef.current?.select()}
+                      className="min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs text-zinc-700 outline-none ring-indigo-500/0 transition-shadow focus-visible:ring-2"
+                      style={{ fontFamily: 'ui-monospace, monospace' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(createdUrl);
+                        } catch {
+                          createdLinkInputRef.current?.select();
+                          document.execCommand('copy');
+                        }
+                        setLinkCopied(true);
+                        toast.success('Odkaz zkopírován');
+                        window.setTimeout(() => setLinkCopied(false), 2000);
+                      }}
+                      className="flex shrink-0 items-center gap-1.5 rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white transition-all active:scale-[0.98]"
+                      style={{ background: linkCopied ? '#22c55e' : '#1e1b4b' }}
+                    >
+                      {linkCopied ? (
+                        <>
+                          <Check className="size-3.5" aria-hidden />
+                          Zkopírováno
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="size-3.5" aria-hidden />
+                          Kopírovat
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="flex flex-col gap-4 px-4 pb-3">
                 {!isSupabaseConfigured && (
-                  <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    V projektu chybí proměnné prostředí Supabase. Zkopíruj{' '}
-                    <code className="text-xs">.env.example</code> na <code className="text-xs">.env</code> a doplň URL a
-                    anon klíč. SQL schéma je v <code className="text-xs">supabase/schema.sql</code>.
-                  </p>
+                  <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                    <p className="font-semibold text-amber-900">Supabase lokálně: chybí .env</p>
+                    <p className="leading-relaxed text-amber-900/90">
+                      Po <code className="rounded bg-amber-100/80 px-1 text-xs">git clone</code> nemáš soubor{' '}
+                      <code className="rounded bg-amber-100/80 px-1 text-xs">.env</code> – v repu záměrně není (obsahuje
+                      tajný klíč). V terminálu v kořeni projektu:
+                    </p>
+                    <pre className="overflow-x-auto rounded-md bg-amber-100/60 px-2 py-2 text-xs text-amber-950">
+                      cp .env.example .env
+                    </pre>
+                    <p className="leading-relaxed text-amber-900/90">
+                      Pak otevři <code className="rounded bg-amber-100/80 px-1 text-xs">.env</code>, doplň URL projektu a{' '}
+                      <strong>anon public</strong> klíč z Supabase → Project Settings → API. Stejné hodnoty má i zbytek
+                      týmu (sdílej je mimo GitHub). Schéma tabulek:{' '}
+                      <code className="rounded bg-amber-100/80 px-1 text-xs">supabase/schema.sql</code>.
+                    </p>
+                  </div>
                 )}
 
                 <div className="space-y-2">
@@ -395,15 +481,6 @@ export function TasksSheet({ open, onOpenChange }: Props) {
           )}
         </SheetContent>
       </Sheet>
-
-      {createdUrl !== null && (
-        <ShareModal
-          url={createdUrl}
-          onClose={() => setCreatedUrl(null)}
-          title="Odkaz na zadání"
-          description="Zkopíruj odkaz a pošli ho studentům. Po vyplnění jména uvidí zadání vlevo a mohou tvořit obvod."
-        />
-      )}
     </>
   );
 }
