@@ -21,6 +21,16 @@ import { Textarea } from '../ui/textarea';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../ui/alert-dialog';
 import { CircuitCanvas } from '../CircuitCanvas';
 import { ComponentPalette, type Tool } from '../ComponentPalette';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -374,6 +384,7 @@ export function TasksSheet({
     Record<string, { instruction_image: string | null; title: string | null; stepCount: number }>
   >({});
   const [linkCopied, setLinkCopied] = useState(false);
+  const [confirmNewTaskOpen, setConfirmNewTaskOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -448,6 +459,13 @@ export function TasksSheet({
     setTitle('');
     setSteps([{ text: '', image: null }]);
     setDragActiveStep(null);
+  };
+
+  const handleConfirmNewTask = () => {
+    setCreatedUrl(null);
+    setLinkCopied(false);
+    resetForm();
+    toast.success('Zadání vymazáno.');
   };
 
   const openDrawForStep = (index: number) => {
@@ -652,6 +670,27 @@ export function TasksSheet({
             "border-t border-[#565e75]/15 bg-[#fafbfc]",
           ].join(" ")}
         >
+          <AlertDialog open={confirmNewTaskOpen} onOpenChange={setConfirmNewTaskOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Opravdu chceš smazat rozpracovaný úkol?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tímto se vymaže aktuálně vyplněný název a kroky zadání.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Zrušit</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    setConfirmNewTaskOpen(false);
+                    handleConfirmNewTask();
+                  }}
+                >
+                  Smazat
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <div className="flex h-full min-h-0 min-h-[100dvh] w-full max-w-none flex-1 flex-col overflow-hidden">
             <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
               <aside className="flex w-full shrink-0 flex-col gap-8 border-b border-[#4a5163] bg-[#565e75] px-5 py-8 sm:w-[17.5rem] sm:border-b-0 sm:border-r sm:border-[#4a5163]">
@@ -730,6 +769,17 @@ export function TasksSheet({
                       aria-hidden
                     />
                     Editovat úkol
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenChange(false)}
+                    className={[
+                      'mt-2 flex w-full items-center justify-center rounded-2xl border border-white/20 bg-transparent px-4 py-3 text-sm font-semibold text-white outline-none transition-colors',
+                      'hover:bg-white/10',
+                      'focus-visible:ring-2 focus-visible:ring-[#fbc02d] focus-visible:ring-offset-2 focus-visible:ring-offset-[#565e75]',
+                    ].join(' ')}
+                  >
+                    Zpět do obvodu
                   </button>
                 </nav>
               </aside>
@@ -960,10 +1010,7 @@ export function TasksSheet({
                                   variant="outline"
                                   disabled={busy}
                                   onClick={() => {
-                                    setCreatedUrl(null);
-                                    setLinkCopied(false);
-                                    resetForm();
-                                    toast.success('Zadání vymazáno.');
+                                    setConfirmNewTaskOpen(true);
                                   }}
                                   className="h-11 w-full rounded-xl border-2 border-sky-200 bg-white text-[15px] font-medium text-sky-900 hover:bg-sky-50 min-[520px]:h-12 min-[520px]:w-auto min-[520px]:shrink-0 min-[520px]:whitespace-nowrap"
                                 >
@@ -1163,6 +1210,14 @@ export function TasksSheet({
                           onClick={() => void handleLoadAssignmentFromUrl()}
                         >
                           {busy ? 'Načítám…' : 'Načíst a editovat'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-12 w-full rounded-xl"
+                          onClick={() => onOpenChange(false)}
+                        >
+                          Zpět do obvodu
                         </Button>
                       </div>
                   </div>
