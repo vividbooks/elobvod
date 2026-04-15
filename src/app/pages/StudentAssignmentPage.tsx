@@ -449,34 +449,34 @@ export default function StudentAssignmentPage() {
                   ) : null}
 
                   {activeStep ? (
-                    <article className="rounded-xl border border-white/12 bg-[#4f566b] p-4 shadow-sm">
-                      <div className="text-[15px] leading-relaxed text-white/95 whitespace-pre-wrap [font-family:'Fenomen_Sans',system-ui,sans-serif]">
+                    <article className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
+                      <div className="text-[15px] leading-relaxed text-slate-800 whitespace-pre-wrap [font-family:'Fenomen_Sans',system-ui,sans-serif]">
                         {activeStep.text}
                       </div>
                       {activeStep.image ? (
                         <img
                           src={activeStep.image}
                           alt=""
-                          className="mt-4 w-full max-w-full rounded-lg border border-white/15 object-contain max-h-[min(40vh,18rem)]"
+                          className="mt-4 w-full max-w-full rounded-lg border border-slate-200 object-contain max-h-[min(40vh,18rem)] bg-white"
                         />
                       ) : null}
                     </article>
                   ) : (
-                    <p className="rounded-xl border border-dashed border-white/25 bg-[#4f566b]/50 px-4 py-6 text-center text-sm text-[#c8cedf]">
+                    <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
                       —
                     </p>
                   )}
                 </div>
               ) : (
-                <article className="rounded-xl border border-white/12 bg-[#4f566b] p-4 shadow-sm">
-                  <div className="text-[15px] leading-relaxed text-white/95 whitespace-pre-wrap [font-family:'Fenomen_Sans',system-ui,sans-serif]">
+                <article className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
+                  <div className="text-[15px] leading-relaxed text-slate-800 whitespace-pre-wrap [font-family:'Fenomen_Sans',system-ui,sans-serif]">
                     {instructionView.text || '—'}
                   </div>
                   {assignment.instruction_image ? (
                     <img
                       src={assignment.instruction_image}
                       alt="Ilustrace ke zadání"
-                      className="mt-4 w-full max-w-full rounded-lg border border-white/15 object-contain max-h-[min(40vh,18rem)]"
+                      className="mt-4 w-full max-w-full rounded-lg border border-slate-200 object-contain max-h-[min(40vh,18rem)] bg-white"
                     />
                   ) : null}
                 </article>
