@@ -626,7 +626,6 @@ export function TasksSheet({
 
       const url = assignmentPublicUrlForHost(row.id);
       setCreatedUrl(url);
-      resetForm();
       toast.success('Zadání je v databázi – zkopíruj odkaz pro studenty.');
     } catch (e) {
       console.error("Uložení zadání (Supabase):", e);
@@ -1210,14 +1209,6 @@ export function TasksSheet({
                           onClick={() => void handleLoadAssignmentFromUrl()}
                         >
                           {busy ? 'Načítám…' : 'Načíst a editovat'}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-12 w-full rounded-xl"
-                          onClick={() => onOpenChange(false)}
-                        >
-                          Zpět do obvodu
                         </Button>
                       </div>
                   </div>

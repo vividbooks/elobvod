@@ -51,6 +51,21 @@ export const TASK_LIBRARY: TaskLibraryEntry[] = [
     title: 'Zadání a3ba270d',
     assignmentId: 'a3ba270d-34ab-42ee-91fb-e963576d6b97',
   },
+  {
+    key: 'ukol-615aebdc',
+    title: 'Zadání 615aebdc',
+    assignmentId: '615aebdc-6b5d-434a-86d5-68b648dc5526',
+  },
+  {
+    key: 'ukol-148dac8b',
+    title: 'Zadání 148dac8b',
+    assignmentId: '148dac8b-82bb-47c2-ab13-19d79c54b16f',
+  },
+  {
+    key: 'ukol-29bf8c11',
+    title: 'Zadání 29bf8c11',
+    assignmentId: '29bf8c11-d046-471c-aca0-e6a2690ca82d',
+  },
 ];
 
 /** Absolutni src pro <img> (Vite base + relativni cesta z public). */
