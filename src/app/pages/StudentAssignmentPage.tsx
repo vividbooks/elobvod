@@ -283,7 +283,7 @@ export default function StudentAssignmentPage() {
     <div className="flex h-screen w-full overflow-hidden bg-white">
       <Toaster position="bottom-center" />
 
-      <div className="flex-1 relative min-w-0 overflow-hidden">
+      <div className="flex-1 relative min-w-0">
         <CircuitCanvas
           tool={tool}
           viewMode={viewMode}
@@ -295,6 +295,21 @@ export default function StudentAssignmentPage() {
           shareHandlerRef={shareHandlerRef}
           onPanelOpenChange={setPanelOpen}
           isTouch={isTouch}
+          editChromeEndSlot={
+            asideCollapsed ? (
+              <button
+                type="button"
+                onClick={() => setAsideCollapsed(false)}
+                className="box-border inline-flex h-[50px] min-h-[50px] max-h-[50px] shrink-0 items-center justify-center gap-2 rounded-full border border-[#4a5163] bg-[#565e75] px-4 text-sm font-medium leading-none text-white shadow-lg transition-colors hover:bg-[#4f566b] [font-family:'Fenomen_Sans',system-ui,sans-serif]"
+                title="Zobrazit panel se zadáním"
+                aria-label="Zobrazit panel se zadáním"
+                aria-expanded={false}
+              >
+                <ChevronRight className="size-4 shrink-0 opacity-90" strokeWidth={2} aria-hidden />
+                <span>Zadání</span>
+              </button>
+            ) : null
+          }
         />
 
         {!panelOpen && (
@@ -315,11 +330,9 @@ export default function StudentAssignmentPage() {
           </div>
         )}
 
-        <div
-          className="absolute top-3 left-1/2 z-20 flex max-w-[calc(100%-12px)] -translate-x-1/2 flex-nowrap items-center justify-center overflow-x-auto overflow-y-visible py-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-          style={{ WebkitOverflowScrolling: 'touch' }}
-        >
-          <div className="shrink-0">
+        <div className="pointer-events-none absolute left-1/2 top-2 z-20 flex max-w-[calc(100%-16px)] -translate-x-1/2 justify-center overflow-visible px-2 py-2">
+          <div className="pointer-events-auto flex max-w-full flex-nowrap items-center justify-center overflow-visible py-1">
+            <div className="shrink-0">
             <TopBar
               viewMode={viewMode}
               onViewModeChange={setViewMode}
@@ -327,26 +340,13 @@ export default function StudentAssignmentPage() {
               onZoomChange={setZoom}
               isViewOnly={false}
             />
+            </div>
           </div>
         </div>
 
       </div>
 
-      {asideCollapsed ? (
-        <button
-          type="button"
-          onClick={() => setAsideCollapsed(false)}
-          className="flex shrink-0 flex-col items-center justify-center gap-1.5 border-l border-[#4a5163] bg-[#565e75] px-2 py-4 text-white transition-colors hover:bg-[#4f566b]"
-          title="Zobrazit panel se zadáním"
-          aria-label="Zobrazit panel se zadáním"
-          aria-expanded={false}
-        >
-          <ChevronLeft className="size-4 shrink-0" aria-hidden />
-          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-center leading-tight text-[#c8cedf] [writing-mode:vertical-rl]">
-            Zadání
-          </span>
-        </button>
-      ) : (
+      {!asideCollapsed ? (
         <>
           <div
             role="separator"
@@ -381,7 +381,7 @@ export default function StudentAssignmentPage() {
                   type="button"
                   onClick={() => setAsideCollapsed(true)}
                   className="flex shrink-0 items-center gap-1.5 rounded-xl border border-white/20 bg-[#4f566b] px-3.5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:border-white/30 hover:bg-[#5c647a]"
-                  title="Schovat panel (zůstane úzký proužek vpravo)"
+                  title="Schovat panel (otevřeš znovu tlačítkem Zadání u Zpět/Vpřed)"
                   aria-label="Skrýt panel se zadáním"
                 >
                   Skrýt
@@ -524,7 +524,7 @@ export default function StudentAssignmentPage() {
             </footer>
           </aside>
         </>
-      )}
+      ) : null}
 
       <Dialog open={submitNameOpen} onOpenChange={setSubmitNameOpen}>
         <DialogContent className="sm:max-w-md">

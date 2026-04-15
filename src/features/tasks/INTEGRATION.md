@@ -1,72 +1,114 @@
-# Integrace bloku Úkoly do jiné aplikace
+# Modul „Úkoly“ (TasksSheet) — vložení do jiného nástroje
 
-Cíl: **stejný Supabase projekt**, tabulky `circuit_assignments` a `circuit_submissions`, stejné sloupce a RLS. Mění se jen hostitelská aplikace (routing, `base` URL, UI kolem).
+Cíl: **stejný Supabase projekt** a tabulky jako v Elobvodu, **stejné sloupce** a RLS. Hostitel dodá routing, URL pro studenty a volitelně vlastní Supabase klient / knihovnu / branding.
 
-## 1. Databáze
-
-- Spusť / udržuj `supabase/schema.sql` v cílovém projektu (nebo stejné schéma ručně).
-- Tabulky: `circuit_assignments`, `circuit_submissions` (názvy exportuje `CIRCUIT_ASSIGNMENTS_TABLE` / `CIRCUIT_SUBMISSIONS_TABLE`).
-- Pro tento blok stačí obvykle **SELECT + INSERT** na `circuit_assignments` (vytvoření zadání, načtení pro knihovnu / draft). Úprava existujícího řádku přes UI zde typicky děláš jako **nový insert** po načtení draftu.
-
-## 2. Proměnné prostředí
-
-Host musí mít stejné veřejné Supabase proměnné jako tato aplikace (viz `src/lib/supabase.ts`):
-
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-
-Nebo vlastní inicializace `getSupabase()` kompatibilní s `@/lib/supabase` — `TasksSheet` volá `getSupabase()` z tohoto projektu.
-
-## 3. Odkazy pro studenty (`/ukol/:id`)
-
-Výchozí chování používá `assignmentPublicUrl` z `src/app/utils/appUrl.ts` (`origin` + Vite `BASE_URL` + `/ukol/:uuid`).
-
-V **jiné aplikaci** předej vlastní builder:
-
-```tsx
-import { TasksSheet } from '@/features/tasks';
-
-<TasksSheet
-  open={open}
-  onOpenChange={setOpen}
-  resolveAssignmentPublicUrl={(id) =>
-    `${window.location.origin}/tvoje-cesta/ukol/${id}`
-  }
-/>
-```
-
-Knihovna úkolů (`TASK_LIBRARY` v `taskLibrary.ts`) bere stejný builder přes `resolveStudentLink(entry, getUrl)` — uvnitř `TasksSheet` se to propojuje automaticky.
-
-## 4. Co zkopírovat / závislosti
-
-Minimálně související moduly z tohoto repozitáře:
-
-- `src/app/components/tasks/**`
-- `src/app/utils/instructionSteps.ts`
-- `src/app/utils/appUrl.ts` (nebo vlastní URL logika + `resolveAssignmentPublicUrl`)
-- `src/lib/supabase.ts`, `src/lib/supabasePublicDefaults.ts` (pokud používáš výchozí klient)
-- `src/lib/circuitTables.ts`
-- UI: komponenty z `src/app/components/ui/*` používané v `TasksSheet` (sheet, dialog, button, …)
-- **Editor kreslení v dialogu** tahá `CircuitCanvas` + `ComponentPalette` — buď je zkopíruj se závislostmi, nebo ten dialog v hostu zjednoduš / nahraď.
-
-Alias `@` → `src` (viz `vite.config.ts`).
-
-## 5. Import z tohoto monorepa
+## Veřejný import
 
 ```ts
 import {
   TasksSheet,
+  type TasksSheetProps,
+  type TasksSheetSupabaseConfigInfo,
   TASK_LIBRARY,
   resolveStudentLink,
+  resolveLibraryImageSrc,
+  parseAssignmentIdFromUrlOrUuid,
   CIRCUIT_ASSIGNMENTS_TABLE,
+  CIRCUIT_SUBMISSIONS_TABLE,
+  type TaskLibraryEntry,
 } from '@/features/tasks';
 ```
 
-## 6. Kontrolní seznam
+## Props `TasksSheet` (embed)
 
-- [ ] Stejné tabulky a sloupce jako ve `schema.sql`
-- [ ] RLS politiky umožňují potřebné operace (select/insert na assignments)
-- [ ] Env Supabase v hostu
-- [ ] `resolveAssignmentPublicUrl` odpovídá routě, kde student vidí úkol
-- [ ] `import.meta.env.BASE_URL` v hostu sedí s veřejnými odkazy (nebo vždy vlastní builder)
-- [ ] Zkopírovány / nahrazeny závislosti: canvas, shadcn UI, `sonner`, `lucide-react`
+| Prop | Význam |
+|------|--------|
+| `open`, `onOpenChange` | Řízení sheetu (povinné). |
+| `resolveAssignmentPublicUrl?(id)` | Absolutní URL stránky úkolu pro studenta. Výchozí: `assignmentPublicUrl` z Elobvodu (`origin` + Vite `base` + `/ukol/`). |
+| `getSupabase?()` | Vlastní klient; jinak globální `getSupabase()` z `@/lib/supabase`. |
+| `getSupabaseConfigInfo?()` | Pro text chyb při „Failed to fetch“; jinak globální z `@/lib/supabase`. |
+| `taskLibrary?` | Pole `TaskLibraryEntry[]`; výchozí export `TASK_LIBRARY` z `taskLibrary.ts`. **Memoizuj** (`useMemo`), pokud skládáš pole v renderu. |
+| `assignmentsTable?` | Název tabulky zadání (výchozí `circuit_assignments`). Sloupce musí odpovídat schématu. |
+| `assignmentUrlPathSegment?` | Segment v cestě před UUID (výchozí `ukol`). Musí souhlasit s `resolveAssignmentPublicUrl` i s routou hostitele. Používá se i při parsování pole „Editovat úkol“. |
+| `brandLabel?` | Malý text vlevo nahoře (výchozí `Elobvod`). `brandLabel=""` → skrytý. |
+| `sidebarIntro?` | Úvodní odstavec pod „Úkoly“ v levém panelu. |
+
+### Příklad hostitele
+
+```tsx
+import { useMemo, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { TasksSheet, type TaskLibraryEntry } from '@/features/tasks';
+
+const supabase = createClient(import.meta.env.VITE_SUPABASE_URL!, import.meta.env.VITE_SUPABASE_ANON_KEY!);
+
+export function HostLessonTools() {
+  const [tasksOpen, setTasksOpen] = useState(false);
+
+  const taskLibrary = useMemo<TaskLibraryEntry[]>(
+    () => [
+      { key: 'a', title: 'Úvodní obvod', assignmentId: '…-uuid-…' },
+    ],
+    [],
+  );
+
+  return (
+    <>
+      <button type="button" onClick={() => setTasksOpen(true)}>Úkoly</button>
+      <TasksSheet
+        open={tasksOpen}
+        onOpenChange={setTasksOpen}
+        getSupabase={() => supabase}
+        getSupabaseConfigInfo={() => ({ url: import.meta.env.VITE_SUPABASE_URL ?? null })}
+        resolveAssignmentPublicUrl={(id) => `${window.location.origin}/courses/lesson-1/assign/${id}`}
+        assignmentUrlPathSegment="assign"
+        taskLibrary={taskLibrary}
+        brandLabel="Můj LMS"
+        sidebarIntro="Zadání sdílíš odkazem; odevzdání studentů zůstává v Elobvodu, pokud tam vede tvoje URL."
+      />
+    </>
+  );
+}
+```
+
+## Parsování odkazu / UUID
+
+`parseAssignmentIdFromUrlOrUuid(raw, pathSegment?)` — stejná logika jako pole „Editovat úkol“. Host může použít pro vlastní formuláře.
+
+## Databázový kontrakt
+
+- Schéma: `supabase/schema.sql` v tomto repu.
+- Tabulka zadání: `circuit_assignments` (`id`, `title`, `instruction_text`, `instruction_image`, `instruction_steps` jsonb, `created_at`).
+- Odevzdání (student): `circuit_submissions` — modul Úkoly do něj přímo nezasahuje, ale studentská stránka ano.
+
+RLS: pro vytváření/načítání zadání v tomto UI typicky **SELECT + INSERT** na `circuit_assignments` (konkrétní politiky viz `schema.sql`).
+
+## Soubory ke zkopírování do hosta (bez monorepa)
+
+Minimální sada závislostí z tohoto projektu:
+
+- `src/app/components/tasks/**`
+- `src/app/utils/instructionSteps.ts`
+- `src/app/utils/appUrl.ts` — jen pokud nepřepíšeš vše přes `resolveAssignmentPublicUrl` / vlastní `taskLibrary` s `studentUrl`
+- `src/lib/supabase.ts` (+ `supabasePublicDefaults.ts`) — jen pokud **nepoužíváš** `getSupabase` prop
+- `src/lib/circuitTables.ts`
+- Shadcn UI používané v `TasksSheet`: `sheet`, `dialog`, `button`, `label`, `textarea`, …
+- **Dialog kreslení:** `CircuitCanvas`, `ComponentPalette` a jejich závislosti — nebo dialog v hostu zjednodušit (nahrát jen obrázek ze souboru).
+
+Alias `@` → `src` (viz `vite.config.ts`).
+
+## NPM závislosti
+
+- `@supabase/supabase-js`
+- `react`, `react-dom`
+- `lucide-react`, `sonner`
+- Tailwind + shadcn (nebo ekvivalent tříd)
+
+## Kontrolní seznam
+
+- [ ] Stejné tabulky / sloupce jako `schema.sql` (nebo vlastní `assignmentsTable` se stejným tvarem řádku)
+- [ ] RLS povoluje potřebné operace
+- [ ] `resolveAssignmentPublicUrl` a `assignmentUrlPathSegment` odpovídají routě hostitele
+- [ ] Studenti mají stále funkční stránku úkolu (v Elobvodu nebo fork s `/ukol/:id` / vlastní cesta)
+- [ ] `taskLibrary` memoizované, pokud není konstanta mimo komponentu
+- [ ] Otestováno: vytvoření zadání, kopie odkazu, načtení z knihovny, edit z URL

@@ -23,10 +23,17 @@ import { Label } from '../ui/label';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { CircuitCanvas } from '../CircuitCanvas';
 import { ComponentPalette, type Tool } from '../ComponentPalette';
-import { getSupabase, getSupabaseConfigInfo, isSupabaseConfigured } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getSupabase, getSupabaseConfigInfo } from '@/lib/supabase';
 import { CIRCUIT_ASSIGNMENTS_TABLE } from '@/lib/circuitTables';
 import { assignmentPublicUrl } from '../../utils/appUrl';
-import { TASK_LIBRARY, resolveLibraryImageSrc, resolveStudentLink } from './taskLibrary';
+import {
+  TASK_LIBRARY,
+  parseAssignmentIdFromUrlOrUuid,
+  resolveLibraryImageSrc,
+  resolveStudentLink,
+  type TaskLibraryEntry,
+} from './taskLibrary';
 import {
   firstStepImage,
   instructionStepsToFallbackText,
@@ -273,20 +280,6 @@ async function svgToPngDataUrl(
   }
 }
 
-/** Z pole URL nebo samotného UUID vytáhne ID zadání (circuit_assignments.id). */
-function parseAssignmentIdFromInput(raw: string): string | null {
-  const s = raw.trim();
-  if (!s) return null;
-  const uuid =
-    /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
-  const only = s.match(uuid);
-  if (only) return only[1].toLowerCase();
-  const inPath = s.match(/\/ukol\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-  if (inPath) return inPath[1].toLowerCase();
-  const anywhere = s.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
-  return anywhere ? anywhere[0].toLowerCase() : null;
-}
-
 function formatDbError(e: unknown): string {
   if (!e || typeof e !== "object") return "Neznámá chyba";
   const o = e as {
@@ -300,6 +293,14 @@ function formatDbError(e: unknown): string {
   return parts.length ? parts.join(" · ") : JSON.stringify(e).slice(0, 200);
 }
 
+/** Tvar návratové hodnoty `getSupabaseConfigInfo` (pro hostitelskou aplikaci). */
+export type TasksSheetSupabaseConfigInfo = {
+  url: string | null;
+  usingDefaults?: boolean;
+  hasEnvUrl?: boolean;
+  hasEnvAnonKey?: boolean;
+};
+
 export interface TasksSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -309,12 +310,49 @@ export interface TasksSheetProps {
    * V jiném nástroji předej vlastní builder, aby odkazy seděly s hostitelskou aplikací.
    */
   resolveAssignmentPublicUrl?: (assignmentId: string) => string;
+  /** Vlastní Supabase klient; jinak `getSupabase()` z `@/lib/supabase`. */
+  getSupabase?: () => SupabaseClient | null;
+  /** Pro diagnostiku v toastech při uložení; výchozí globální z `@/lib/supabase`. */
+  getSupabaseConfigInfo?: () => TasksSheetSupabaseConfigInfo;
+  /** Knihovna karet; výchozí export `TASK_LIBRARY` z `taskLibrary.ts`. */
+  taskLibrary?: TaskLibraryEntry[];
+  /** Název tabulky zadání (stejné sloupce jako `circuit_assignments`). */
+  assignmentsTable?: string;
+  /**
+   * Segment URL za kterým následuje UUID (např. `lesson` → `…/lesson/:id`).
+   * Musí souhlasit s routou hostitele i s `resolveAssignmentPublicUrl`.
+   */
+  assignmentUrlPathSegment?: string;
+  /** Malý nadpis vlevo nahoře; `''` = skryt. Výchozí `Elobvod`. */
+  brandLabel?: string;
+  /** Úvodní text v levém panelu pod „Úkoly“. */
+  sidebarIntro?: string;
 }
 
 type TasksPanel = 'library' | 'create' | 'edit';
 
-export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: TasksSheetProps) {
+export function TasksSheet({
+  open,
+  onOpenChange,
+  resolveAssignmentPublicUrl,
+  getSupabase: getSupabaseFromHost,
+  getSupabaseConfigInfo: getSupabaseConfigInfoFromHost,
+  taskLibrary: taskLibraryProp,
+  assignmentsTable,
+  assignmentUrlPathSegment = 'ukol',
+  brandLabel = 'Elobvod',
+  sidebarIntro,
+}: TasksSheetProps) {
   const assignmentPublicUrlForHost = resolveAssignmentPublicUrl ?? assignmentPublicUrl;
+  const libraryEntries = taskLibraryProp ?? TASK_LIBRARY;
+  const assignmentsTableName = assignmentsTable ?? CIRCUIT_ASSIGNMENTS_TABLE;
+  const asideIntro =
+    sidebarIntro ??
+    'Hotová zadání, nová úloha nebo úprava podle odkazu — stejně jako v přehledu lekce.';
+  const resolveClient = () => getSupabaseFromHost?.() ?? getSupabase();
+  const resolveConfig = () => getSupabaseConfigInfoFromHost?.() ?? getSupabaseConfigInfo();
+  const parseAssignmentInput = (raw: string) =>
+    parseAssignmentIdFromUrlOrUuid(raw, assignmentUrlPathSegment);
   const createdLinkInputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('');
   const [steps, setSteps] = useState<StepDraft[]>([{ text: '', image: null }]);
@@ -345,12 +383,12 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
   }, [open]);
 
   useEffect(() => {
-    if (!open || tasksPanel !== 'library' || !isSupabaseConfigured) return;
-    const supabase = getSupabase();
+    if (!open || tasksPanel !== 'library') return;
+    const supabase = resolveClient();
     if (!supabase) return;
     const ids = [
       ...new Set(
-        TASK_LIBRARY.map(e => e.assignmentId?.trim()).filter((v): v is string => Boolean(v)),
+        libraryEntries.map(e => e.assignmentId?.trim()).filter((v): v is string => Boolean(v)),
       ),
     ];
     if (ids.length === 0) return;
@@ -358,7 +396,7 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
     (async () => {
       try {
         const { data, error } = await supabase
-          .from(CIRCUIT_ASSIGNMENTS_TABLE)
+          .from(assignmentsTableName)
           .select('id, instruction_image, title, instruction_steps, instruction_text')
           .in('id', ids);
         if (cancelled || error || !data) return;
@@ -393,7 +431,7 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
     return () => {
       cancelled = true;
     };
-  }, [open, tasksPanel]);
+  }, [open, tasksPanel, libraryEntries, assignmentsTableName, getSupabaseFromHost]);
 
   useEffect(() => {
     if (!createdUrl) return;
@@ -435,7 +473,7 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
   };
 
   const loadLibraryAssignmentIntoDraft = async (assignmentId: string) => {
-    const supabase = getSupabase();
+    const supabase = resolveClient();
     if (!supabase) {
       toast.error('Supabase klient není k dispozici.');
       return;
@@ -443,7 +481,7 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
     setBusy(true);
     try {
       const { data, error } = await supabase
-        .from(CIRCUIT_ASSIGNMENTS_TABLE)
+        .from(assignmentsTableName)
         .select('id, title, instruction_text, instruction_steps')
         .eq('id', assignmentId)
         .maybeSingle();
@@ -519,7 +557,7 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
   };
 
   const handleLoadAssignmentFromUrl = async () => {
-    const id = parseAssignmentIdFromInput(editAssignmentUrl);
+    const id = parseAssignmentInput(editAssignmentUrl);
     if (!id) {
       toast.error('Vlož platnou adresu zadání nebo UUID.');
       return;
@@ -537,7 +575,7 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
   };
 
   const handleCreate = async () => {
-    const supabase = getSupabase();
+    const supabase = resolveClient();
     if (!supabase) {
       toast.error('Supabase klient není k dispozici.');
       return;
@@ -558,7 +596,7 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
         instruction_steps: cleaned.map(s => (s.image ? { text: s.text, image: s.image } : { text: s.text })),
         instruction_image: firstStepImage(cleaned) ?? null,
       };
-      const { data, error } = await supabase.from(CIRCUIT_ASSIGNMENTS_TABLE).insert(payload).select("id");
+      const { data, error } = await supabase.from(assignmentsTableName).insert(payload).select("id");
 
       if (error) throw error;
       const row = data?.[0];
@@ -574,7 +612,7 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
       toast.success('Zadání je v databázi – zkopíruj odkaz pro studenty.');
     } catch (e) {
       console.error("Uložení zadání (Supabase):", e);
-      const config = getSupabaseConfigInfo();
+      const config = resolveConfig();
       const isFetchFailure =
         e instanceof TypeError && /fetch/i.test(e.message || '') ||
         (typeof e === 'object' && e !== null && 'message' in e && String((e as any).message).includes('Failed to fetch'));
@@ -618,13 +656,13 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
             <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
               <aside className="flex w-full shrink-0 flex-col gap-8 border-b border-[#4a5163] bg-[#565e75] px-5 py-8 sm:w-[17.5rem] sm:border-b-0 sm:border-r sm:border-[#4a5163]">
                 <div className="space-y-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#b0b8d4]">
-                    Elobvod
-                  </p>
+                  {brandLabel ? (
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#b0b8d4]">
+                      {brandLabel}
+                    </p>
+                  ) : null}
                   <p className="text-lg font-medium leading-snug tracking-tight text-white">Úkoly</p>
-                  <p className="text-sm leading-relaxed text-[#c8cedf]">
-                    Hotová zadání, nová úloha nebo úprava podle odkazu — stejně jako v přehledu lekce.
-                  </p>
+                  <p className="text-sm leading-relaxed text-[#c8cedf]">{asideIntro}</p>
                 </div>
                 <nav className="flex flex-col gap-2.5" aria-label="Režim úkolů">
                   <button
@@ -708,17 +746,29 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
                           editoru a uprav.
                         </SheetDescription>
                       </div>
-                      {TASK_LIBRARY.length === 0 ? (
+                      {libraryEntries.length === 0 ? (
                         <p className="rounded-2xl border border-dashed border-sky-200 bg-sky-50 px-6 py-10 text-center text-[15px] leading-relaxed text-slate-600">
-                          Zatím žádné položky. Doplň je v souboru{' '}
-                          <code className="rounded-lg bg-white px-2 py-0.5 text-sm font-medium text-sky-900 ring-1 ring-sky-200/80">
-                            taskLibrary.ts
-                          </code>
-                          .
+                          {taskLibraryProp !== undefined ? (
+                            <>
+                              Knihovna je prázdná — předej neprázdné pole v prop{' '}
+                              <code className="rounded-lg bg-white px-2 py-0.5 text-sm font-medium text-sky-900 ring-1 ring-sky-200/80">
+                                taskLibrary
+                              </code>
+                              .
+                            </>
+                          ) : (
+                            <>
+                              Zatím žádné položky. Doplň je v souboru{' '}
+                              <code className="rounded-lg bg-white px-2 py-0.5 text-sm font-medium text-sky-900 ring-1 ring-sky-200/80">
+                                taskLibrary.ts
+                              </code>
+                              .
+                            </>
+                          )}
                         </p>
                       ) : (
                         <ul className="grid grid-cols-1 justify-items-stretch gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                          {TASK_LIBRARY.map((entry, index) => {
+                          {libraryEntries.map((entry, index) => {
                             const link = resolveStudentLink(entry, assignmentPublicUrlForHost);
                             const id = entry.assignmentId?.trim();
                             const fromDb = id ? libraryDbMeta[id] : undefined;
@@ -1101,7 +1151,7 @@ export function TasksSheet({ open, onOpenChange, resolveAssignmentPublicUrl }: T
                           id="edit-assignment-url"
                           value={editAssignmentUrl}
                           onChange={e => setEditAssignmentUrl(e.target.value)}
-                          placeholder="https://…/ukol/… nebo vlož UUID"
+                          placeholder={`https://…/${assignmentUrlPathSegment}/… nebo vlož UUID`}
                           disabled={busy}
                           className="w-full rounded-xl border border-indigo-200/80 bg-white px-4 py-3.5 text-sm text-slate-800 outline-none ring-indigo-400/0 transition-shadow focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-400/25"
                           style={{ fontFamily: 'ui-monospace, monospace' }}

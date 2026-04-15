@@ -141,6 +141,8 @@ interface Props {
   /** Přepsané štítky (klíč = id součástky). Chybí klíč → výchozí z napětí/odporu; prázdný řetězec → nic. */
   schemaValueLabels?: Record<string, string>;
   onSchemaValueLabelChange?: (compId: string, value: string) => void;
+  /** Volitelný obsah vpravo od Undo/Redo (např. tlačítko „Zadání“ na studentské stránce). */
+  editChromeEndSlot?: React.ReactNode;
 }
 
 interface Snapshot {
@@ -1030,6 +1032,7 @@ export function CircuitCanvas({
   editableSchemaValueLabels = false,
   schemaValueLabels,
   onSchemaValueLabelChange,
+  editChromeEndSlot,
 }: Props) {
   const [components, setComponents] = useState<PlacedComponent[]>(initialState?.components ?? []);
   const [wires, setWires] = useState<Wire[]>(initialState?.wires ?? []);
@@ -3097,7 +3100,12 @@ export function CircuitCanvas({
   }, [shareHandlerRef]);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 overflow-hidden select-none" style={{ background: '#E2E7F8', touchAction: 'none', WebkitUserSelect: 'none' }}>
+    <div
+      ref={containerRef}
+      className="absolute inset-0 overflow-visible select-none"
+      style={{ touchAction: 'none', WebkitUserSelect: 'none' }}
+    >
+      <div className="absolute inset-0 overflow-hidden" style={{ background: '#E2E7F8' }}>
       <svg
         ref={el => {
           svgRef.current = el;
@@ -3746,28 +3754,34 @@ export function CircuitCanvas({
           </div>
         </>
       )}
+      </div>
 
-      {/* Undo / Redo – only in edit mode */}
+      {/* Undo / Redo (+ volitelný slot vpravo). Bez overflow:auto — ten ořezává box-shadow ve svislém směru. */}
       {!isViewOnly && (
-        <div
-          className="absolute top-3 right-3 z-10 flex items-center rounded-full shadow-lg overflow-hidden select-none"
-          style={{ background: '#ffffff', height: 50 }}
-        >
-          <button onClick={undo} disabled={!histUI.canUndo}
-            title={isTouch ? 'Zpět' : 'Zpět (Ctrl+Z)'}
-            className="flex items-center justify-center transition-all"
-            style={{ width: 50, height: 50, background: 'transparent', touchAction: 'manipulation',
-              color: histUI.canUndo ? '#1e1b4b' : '#b0afc4', cursor: histUI.canUndo ? 'pointer' : 'default' }}>
-            <Undo2 size={16} />
-          </button>
-          <div style={{ width: 1, height: 20, background: 'rgba(113,113,122,0.25)' }} />
-          <button onClick={redo} disabled={!histUI.canRedo}
-            title={isTouch ? 'Vpřed' : 'Vpřed (Ctrl+Y)'}
-            className="flex items-center justify-center transition-all"
-            style={{ width: 50, height: 50, background: 'transparent', touchAction: 'manipulation',
-              color: histUI.canRedo ? '#1e1b4b' : '#b0afc4', cursor: histUI.canRedo ? 'pointer' : 'default' }}>
-            <Redo2 size={16} />
-          </button>
+        <div className="pointer-events-auto absolute right-2 top-2 z-10 flex max-w-[min(100%,calc(100vw-16px))] flex-nowrap items-center gap-2 overflow-visible py-2 pl-2 pr-2">
+          <div
+            className="flex h-[50px] shrink-0 items-center rounded-full shadow-lg overflow-hidden select-none"
+            style={{ background: '#ffffff' }}
+          >
+            <button onClick={undo} disabled={!histUI.canUndo}
+              title={isTouch ? 'Zpět' : 'Zpět (Ctrl+Z)'}
+              className="flex items-center justify-center transition-all"
+              style={{ width: 50, height: 50, background: 'transparent', touchAction: 'manipulation',
+                color: histUI.canUndo ? '#1e1b4b' : '#b0afc4', cursor: histUI.canUndo ? 'pointer' : 'default' }}>
+              <Undo2 size={16} />
+            </button>
+            <div style={{ width: 1, height: 20, background: 'rgba(113,113,122,0.25)' }} />
+            <button onClick={redo} disabled={!histUI.canRedo}
+              title={isTouch ? 'Vpřed' : 'Vpřed (Ctrl+Y)'}
+              className="flex items-center justify-center transition-all"
+              style={{ width: 50, height: 50, background: 'transparent', touchAction: 'manipulation',
+                color: histUI.canRedo ? '#1e1b4b' : '#b0afc4', cursor: histUI.canRedo ? 'pointer' : 'default' }}>
+              <Redo2 size={16} />
+            </button>
+          </div>
+          {editChromeEndSlot ? (
+            <div className="flex h-[50px] shrink-0 items-center">{editChromeEndSlot}</div>
+          ) : null}
         </div>
       )}
 

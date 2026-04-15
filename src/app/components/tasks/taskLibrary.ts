@@ -76,3 +76,30 @@ export function resolveStudentLink(
   if (entry.assignmentId?.trim()) return getAssignmentPublicUrl(entry.assignmentId.trim());
   return null;
 }
+
+const UUID_IN_TEXT =
+  /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
+function normalizeAssignmentPathSegment(segment: string): string {
+  const s = segment.replace(/^\/+|\/+$/g, '');
+  if (!/^[a-z0-9][a-z0-9-]*$/i.test(s)) return 'ukol';
+  return s;
+}
+
+/**
+ * Z textového pole (celá URL, nebo jen UUID) vytáhne ID záznamu v `circuit_assignments`.
+ * `pathSegment` musí odpovídat cestě v hostu (např. `ukol` pro `…/ukol/:uuid`).
+ */
+export function parseAssignmentIdFromUrlOrUuid(raw: string, pathSegment = 'ukol'): string | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const only = s.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  if (only) return only[0].toLowerCase();
+  const seg = normalizeAssignmentPathSegment(pathSegment);
+  const inPath = s.match(
+    new RegExp(`/${seg}/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`, 'i'),
+  );
+  if (inPath) return inPath[1].toLowerCase();
+  const anywhere = s.match(UUID_IN_TEXT);
+  return anywhere ? anywhere[1].toLowerCase() : null;
+}
