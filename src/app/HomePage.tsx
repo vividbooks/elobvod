@@ -7,7 +7,7 @@ import { CircuitCanvas } from './components/CircuitCanvas';
 import { Toaster } from './components/ui/sonner';
 import { parseCircuitFromUrl } from './utils/circuitUrl';
 import { ShareModal } from './components/ShareModal';
-import { TasksSheet } from './components/tasks/TasksSheet';
+import { TasksSheet } from '@/features/tasks';
 import { useIsTouch, useToolbarScale } from './hooks/editorChrome';
 
 const BG = '#ffffff';

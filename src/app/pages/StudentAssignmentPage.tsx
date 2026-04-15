@@ -25,8 +25,6 @@ import { assignmentInstructionDisplay } from '../utils/instructionSteps';
 import { useIsTouch, useToolbarScale } from '../hooks/editorChrome';
 import { toast } from 'sonner';
 
-const BG = '#ffffff';
-
 const ASIDE_W_KEY = 'elobvod-student-aside-w';
 const ASIDE_COLLAPSED_KEY = 'elobvod-student-aside-collapsed';
 const NOTE_KEY_PREFIX = 'elobvod-student-note-';
@@ -338,16 +336,14 @@ export default function StudentAssignmentPage() {
         <button
           type="button"
           onClick={() => setAsideCollapsed(false)}
-          className="flex shrink-0 flex-col items-center justify-center gap-1.5 border-l border-zinc-200 bg-zinc-50/95 px-2 py-4 text-zinc-600 shadow-[inset_1px_0_0_rgba(255,255,255,0.6)] transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+          className="flex shrink-0 flex-col items-center justify-center gap-1.5 border-l border-[#4a5163] bg-[#565e75] px-2 py-4 text-white transition-colors hover:bg-[#4f566b]"
           title="Zobrazit panel se zadáním"
           aria-label="Zobrazit panel se zadáním"
           aria-expanded={false}
         >
           <ChevronLeft className="size-4 shrink-0" aria-hidden />
-          <span
-            className="text-[10px] font-semibold uppercase tracking-wider text-center leading-tight [writing-mode:vertical-rl]"
-          >
-            Zobrazit zadání
+          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-center leading-tight text-[#c8cedf] [writing-mode:vertical-rl]">
+            Zadání
           </span>
         </button>
       ) : (
@@ -356,107 +352,143 @@ export default function StudentAssignmentPage() {
             role="separator"
             aria-orientation="vertical"
             aria-label="Změnit šířku panelu zadání"
-            className="group relative z-30 flex w-3 shrink-0 cursor-col-resize select-none justify-center border-l border-r border-zinc-200/80 bg-zinc-100/90 hover:bg-zinc-200/90"
+            className="z-30 flex w-2.5 shrink-0 cursor-col-resize select-none justify-center border-l border-[#3d4456] bg-[#4a5163] hover:bg-[#525a70]"
             onPointerDown={onAsideResizePointerDown}
             onPointerMove={onAsideResizePointerMove}
             onPointerUp={onAsideResizePointerUp}
             onPointerCancel={onAsideResizePointerUp}
-          >
-            <div
-              className="pointer-events-none absolute left-1/2 top-1/2 z-10 flex h-11 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-200 bg-white shadow-md ring-1 ring-zinc-900/5 transition-[box-shadow,transform] group-hover:shadow-lg group-active:scale-95"
-              aria-hidden
-            >
-              <GripVertical className="size-3 text-zinc-400 group-hover:text-zinc-500" strokeWidth={2} />
-            </div>
-          </div>
+          />
 
           <aside
-            className="flex min-w-0 shrink-0 flex-col border-l border-zinc-200 bg-zinc-50/90"
+            className="flex min-w-0 shrink-0 flex-col bg-[#565e75] text-white"
             style={{ width: asideWidth }}
-            aria-expanded
+            aria-expanded={true}
           >
-            <div className="flex items-center justify-between gap-2 border-b border-zinc-200/80 px-3 py-2.5">
-              <div className="min-w-0">
-                <div className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Zadání</div>
-                {assignment.title?.trim() ? (
-                  <div className="truncate text-sm font-semibold text-zinc-900">{assignment.title.trim()}</div>
-                ) : null}
+            <header className="shrink-0 border-b border-[#4a5163] bg-[#565e75]">
+              <div className="flex items-center gap-2 px-4 pt-[15px] pb-2">
+                <div
+                  className="flex h-11 w-6 shrink-0 cursor-col-resize select-none items-center justify-center rounded-full border border-sky-400/90 bg-sky-500 transition-[transform,background-color,border-color] hover:border-sky-300 hover:bg-sky-600 active:scale-95"
+                  onPointerDown={onAsideResizePointerDown}
+                  onPointerMove={onAsideResizePointerMove}
+                  onPointerUp={onAsideResizePointerUp}
+                  onPointerCancel={onAsideResizePointerUp}
+                  title="Změnit šířku panelu"
+                  aria-hidden
+                >
+                  <GripVertical className="size-3 text-white/95" strokeWidth={2} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAsideCollapsed(true)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-xl border border-white/20 bg-[#4f566b] px-3.5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:border-white/30 hover:bg-[#5c647a]"
+                  title="Schovat panel (zůstane úzký proužek vpravo)"
+                  aria-label="Skrýt panel se zadáním"
+                >
+                  Skrýt
+                  <ChevronRight className="size-4 shrink-0 opacity-90" aria-hidden />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setAsideCollapsed(true)}
-                className="flex shrink-0 items-center gap-1 rounded-lg border border-zinc-200/80 bg-white px-2 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900"
-                title="Schovat panel se zadáním (zůstane úzký proužek vpravo)"
-                aria-label="Skrýt panel se zadáním"
-              >
-                <span className="whitespace-nowrap">Skrýt panel</span>
-                <ChevronRight className="size-3.5 shrink-0 opacity-80" aria-hidden />
-              </button>
-            </div>
+              <div className="min-w-0 space-y-1 px-4 pb-3 pt-1">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#b0b8d4]">Zadání</p>
+                {assignment.title?.trim() ? (
+                  <h1 className="text-[15px] font-semibold leading-snug tracking-tight text-white">
+                    {assignment.title.trim()}
+                  </h1>
+                ) : (
+                  <h1 className="text-[15px] font-semibold leading-snug text-white">Úkol</h1>
+                )}
+              </div>
+            </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
               {instructionView.kind === 'steps' ? (
-                <>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                      KROK {Math.min(stepIndex + 1, stepsCount)} / {stepsCount}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setStepIndex(i => Math.max(0, i - 1))}
-                        disabled={stepIndex <= 0}
-                        className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                <div className="flex flex-col gap-3">
+                  {stepsCount > 1 ? (
+                    <div className="rounded-xl border border-white/12 bg-[#4f566b] p-3 shadow-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center rounded-full bg-[#fbc02d] px-2.5 py-1 text-xs font-semibold tabular-nums text-slate-900">
+                          Krok {Math.min(stepIndex + 1, stepsCount)} z {stepsCount}
+                        </span>
+                        <div className="flex items-center rounded-lg border border-white/15 bg-[#3d4456] p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setStepIndex(i => Math.max(0, i - 1))}
+                            disabled={stepIndex <= 0}
+                            className="flex size-8 items-center justify-center rounded-md text-white/85 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                            aria-label="Předchozí krok"
+                            title="Předchozí"
+                          >
+                            <ChevronLeft className="size-4" aria-hidden />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStepIndex(i => Math.min(stepsCount - 1, i + 1))}
+                            disabled={stepIndex >= stepsCount - 1}
+                            className="flex size-8 items-center justify-center rounded-md text-white/85 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                            aria-label="Další krok"
+                            title="Další"
+                          >
+                            <ChevronRight className="size-4" aria-hidden />
+                          </button>
+                        </div>
+                      </div>
+                      <div
+                        className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/15"
+                        role="progressbar"
+                        aria-valuemin={1}
+                        aria-valuemax={stepsCount}
+                        aria-valuenow={Math.min(stepIndex + 1, stepsCount)}
+                        aria-label="Postup v zadání"
                       >
-                        Předchozí
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStepIndex(i => Math.min(stepsCount - 1, i + 1))}
-                        disabled={stepIndex >= stepsCount - 1}
-                        className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Další
-                      </button>
+                        <div
+                          className="h-full rounded-full bg-[#fbc02d] transition-[width] duration-200 ease-out"
+                          style={{ width: `${((Math.min(stepIndex + 1, stepsCount)) / stepsCount) * 100}%` }}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
 
                   {activeStep ? (
-                    <div className="space-y-2">
-                      <div className="text-lg leading-relaxed text-zinc-800 whitespace-pre-wrap">
+                    <article className="rounded-xl border border-white/12 bg-[#4f566b] p-4 shadow-sm">
+                      <div className="text-[15px] leading-relaxed text-white/95 whitespace-pre-wrap [font-family:'Fenomen_Sans',system-ui,sans-serif]">
                         {activeStep.text}
                       </div>
                       {activeStep.image ? (
                         <img
                           src={activeStep.image}
                           alt=""
-                          className="rounded-lg border border-zinc-200 w-full object-contain max-h-[40vh]"
+                          className="mt-4 w-full max-w-full rounded-lg border border-white/15 object-contain max-h-[min(40vh,18rem)]"
                         />
                       ) : null}
-                    </div>
+                    </article>
                   ) : (
-                    <p className="text-sm text-zinc-500">—</p>
+                    <p className="rounded-xl border border-dashed border-white/25 bg-[#4f566b]/50 px-4 py-6 text-center text-sm text-[#c8cedf]">
+                      —
+                    </p>
                   )}
-                </>
+                </div>
               ) : (
-                <>
-                  <p className="text-lg leading-relaxed text-zinc-800 whitespace-pre-wrap">
+                <article className="rounded-xl border border-white/12 bg-[#4f566b] p-4 shadow-sm">
+                  <div className="text-[15px] leading-relaxed text-white/95 whitespace-pre-wrap [font-family:'Fenomen_Sans',system-ui,sans-serif]">
                     {instructionView.text || '—'}
-                  </p>
+                  </div>
                   {assignment.instruction_image ? (
                     <img
                       src={assignment.instruction_image}
-                      alt="Zadání"
-                      className="rounded-lg border border-zinc-200 w-full object-contain max-h-[40vh]"
+                      alt="Ilustrace ke zadání"
+                      className="mt-4 w-full max-w-full rounded-lg border border-white/15 object-contain max-h-[min(40vh,18rem)]"
                     />
                   ) : null}
-                </>
+                </article>
               )}
 
-              <div className="pt-1 border-t border-zinc-200" />
-              <div className="space-y-1.5">
-                <div className="text-xs font-medium text-zinc-500">Poznámka pro učitele (volitelné)</div>
+              <section className="space-y-2 rounded-xl border border-dashed border-white/20 bg-[#4f566b] p-3 shadow-sm">
+                <Label htmlFor="student-teacher-note" className="text-xs font-medium text-[#c8cedf]">
+                  Poznámka pro učitele{' '}
+                  <span className="font-normal text-[#9ca3bc]">(volitelné)</span>
+                </Label>
                 <textarea
+                  id="student-teacher-note"
                   value={studentNote}
                   onChange={e => {
                     const v = e.target.value;
@@ -465,29 +497,31 @@ export default function StudentAssignmentPage() {
                   }}
                   placeholder="Např. co bylo nejasné, co jsi zkoušel(a)…"
                   rows={3}
-                  className="w-full resize-y rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 outline-none ring-indigo-500/0 transition-shadow focus-visible:ring-2 focus-visible:ring-indigo-400"
+                  className="w-full resize-y rounded-lg border border-white/15 bg-[#3d4456] px-3 py-2 text-sm text-white outline-none transition-shadow placeholder:text-[#9ca3bc] focus-visible:border-[#fbc02d]/50 focus-visible:ring-2 focus-visible:ring-[#fbc02d]/25"
                 />
+              </section>
+
+              <div className="rounded-lg border border-white/10 bg-[#4f566b] px-3 py-2 text-xs text-[#c8cedf]">
+                {studentName ? (
+                  <span>
+                    <span className="font-medium text-white">Jméno:</span> {studentName}
+                  </span>
+                ) : (
+                  <span className="text-[#9ca3bc]">Jméno se doplní při odevzdání.</span>
+                )}
               </div>
-              {studentName ? (
-                <div className="text-xs text-zinc-500 pt-1 border-t border-zinc-200">Student: {studentName}</div>
-              ) : (
-                <p className="text-xs text-zinc-400 pt-1 border-t border-zinc-200">
-                  Jméno doplníš při odevzdání.
-                </p>
-              )}
             </div>
 
-            <div className="shrink-0 border-t border-zinc-200 bg-zinc-50/95 p-3">
+            <footer className="shrink-0 border-t border-[#4a5163] bg-[#4a5163] p-4">
               <button
                 type="button"
                 onClick={handleSubmit}
                 disabled={submitBusy}
-                className="w-full rounded-xl px-4 py-3 text-sm font-semibold shadow-md transition-all active:scale-[0.98] disabled:opacity-60"
-                style={{ background: BG, color: '#1e1b4b', border: '1px solid rgb(228 228 231)' }}
+                className="w-full rounded-xl bg-[#fbc02d] px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition-colors hover:bg-[#f9a825] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitBusy ? 'Odevzdávám…' : 'Odevzdat cvičení'}
               </button>
-            </div>
+            </footer>
           </aside>
         </>
       )}

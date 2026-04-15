@@ -64,8 +64,15 @@ export function resolveLibraryImageSrc(imageUrl: string | undefined): string | n
   return `${baseNorm}${path}`;
 }
 
-export function resolveStudentLink(entry: TaskLibraryEntry): string | null {
+/**
+ * Odkaz pro studenty z položky knihovny.
+ * `getAssignmentPublicUrl` umožní hostitelské aplikaci (jiný base path / doména) bez úprav tohoto souboru.
+ */
+export function resolveStudentLink(
+  entry: TaskLibraryEntry,
+  getAssignmentPublicUrl: (assignmentId: string) => string = assignmentPublicUrl,
+): string | null {
   if (entry.studentUrl?.trim()) return entry.studentUrl.trim();
-  if (entry.assignmentId?.trim()) return assignmentPublicUrl(entry.assignmentId.trim());
+  if (entry.assignmentId?.trim()) return getAssignmentPublicUrl(entry.assignmentId.trim());
   return null;
 }
