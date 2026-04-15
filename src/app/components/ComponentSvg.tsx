@@ -26,6 +26,20 @@ const formatVoltage = (v: number): string => {
   return formatted.replace('.', ',');
 };
 
+/** Výchozí štítek zdroje ve schématu (např. „4,5 V“) – editor kreslení / export. */
+export function schemaDefaultVoltageLabel(v: number): string {
+  return `${formatVoltage(v)} V`;
+}
+
+/** Výchozí štítek rezistoru ve schématu (např. „100 Ω“ / „1,5 kΩ“). */
+export function schemaDefaultResistanceLabel(r: number): string {
+  if (r >= 1000) {
+    const kOhms = r / 1000;
+    return `${kOhms.toFixed(kOhms % 1 === 0 ? 0 : 1).replace('.', ',')} kΩ`;
+  }
+  return `${r} Ω`;
+}
+
 /**
  * Approximate pixel lengths of each component's wire-stub paths.
  * Computed as chord-length × (60/170) scale factor.
@@ -1338,17 +1352,13 @@ function SchemaSymbol({ type, isOn, bulbState, current = 0, voltage, resistance,
   // Format voltage display
   const getVoltageText = (v?: number) => {
     if (v === undefined) return '';
-    return `${formatVoltage(v)}V`;
+    return schemaDefaultVoltageLabel(v);
   };
 
   // Format resistance display
   const getResistanceText = (r?: number) => {
     if (r === undefined) return '';
-    if (r >= 1000) {
-      const kOhms = r / 1000;
-      return `${kOhms.toFixed(kOhms % 1 === 0 ? 0 : 1).replace('.', ',')}kΩ`;
-    }
-    return `${r}Ω`;
+    return schemaDefaultResistanceLabel(r);
   };
   
   switch (type) {

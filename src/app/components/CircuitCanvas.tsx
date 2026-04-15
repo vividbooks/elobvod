@@ -1,7 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Undo2, Redo2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ComponentSvg, RealisticTile, type ComponentType, type ViewMode, type BulbState } from './ComponentSvg';
+import {
+  ComponentSvg,
+  RealisticTile,
+  schemaDefaultResistanceLabel,
+  schemaDefaultVoltageLabel,
+  type ComponentType,
+  type ViewMode,
+  type BulbState,
+} from './ComponentSvg';
 import type { Tool } from './ComponentPalette';
 import { encodeCircuit, buildShareUrl } from '../utils/circuitUrl';
 import { DraggablePanel } from './DraggablePanel';
@@ -41,6 +49,9 @@ const LED_VF = 1.8;            // V – prahové napětí LED (forward voltage, 
 const LED2_VF = 2.2;           // V – zelená LED
 const LED3_VF = 3.0;           // V – modrá LED
 const isLedType = (t: string) => t === 'led' || t === 'led2' || t === 'led3';
+const isBatteryType = (t: ComponentType) => t === 'battery' || t === 'battery2' || t === 'battery3';
+const isResistorTypeForSchemaLabel = (t: ComponentType) =>
+  t === 'resistor' || t === 'resistor2' || t === 'resistor3';
 const getLedVf = (t: string) => t === 'led3' ? LED3_VF : t === 'led2' ? LED2_VF : LED_VF;
 const LED_MIN_CURRENT = 0.001; // A – minimální proud pro svícení LED (1 mA)
 const LED_MAX_CURRENT = 0.020; // A – jmenovitý max. proud LED (20 mA) pro plný jas
@@ -106,6 +117,8 @@ interface Props {
   setTool: (t: Tool) => void;
   setZoom: (z: number) => void;
   isViewOnly?: boolean;
+  /** Optional ref to the underlying SVG element (for export/screenshot). */
+  svgElementRef?: React.MutableRefObject<SVGSVGElement | null>;
   initialState?: {
     components: PlacedComponent[];
     wires: Wire[];
@@ -123,6 +136,11 @@ interface Props {
   isTouch?: boolean;
   /** Animace elektronů podél drátů (jen realistický pohled). Výchozí false – zapnout: true nebo prop z App. */
   showWireElectrons?: boolean;
+  /** Ve schématu: u baterií a rezistorů zobraz upravitelný text hodnoty (editor kreslení). */
+  editableSchemaValueLabels?: boolean;
+  /** Přepsané štítky (klíč = id součástky). Chybí klíč → výchozí z napětí/odporu; prázdný řetězec → nic. */
+  schemaValueLabels?: Record<string, string>;
+  onSchemaValueLabelChange?: (compId: string, value: string) => void;
 }
 
 interface Snapshot {
@@ -995,7 +1013,24 @@ function computeWireDirections(
   return { wireMap, compMap };
 }
 
-export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, setZoom, isViewOnly, initialState, shareHandlerRef, onPanelOpenChange, isTouch = false, showWireElectrons = false }: Props) {
+export function CircuitCanvas({
+  tool,
+  viewMode,
+  clearTrigger,
+  zoom,
+  setTool,
+  setZoom,
+  isViewOnly,
+  svgElementRef,
+  initialState,
+  shareHandlerRef,
+  onPanelOpenChange,
+  isTouch = false,
+  showWireElectrons = false,
+  editableSchemaValueLabels = false,
+  schemaValueLabels,
+  onSchemaValueLabelChange,
+}: Props) {
   const [components, setComponents] = useState<PlacedComponent[]>(initialState?.components ?? []);
   const [wires, setWires] = useState<Wire[]>(initialState?.wires ?? []);
   const [switchStates, setSwitchStates] = useState<Record<string, boolean>>(initialState?.switchStates ?? {});
@@ -2323,6 +2358,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
   }, [tool, clientToSvg, panOffset, nearestConnAt]);
 
   const handleCompMouseDown = useCallback((comp: PlacedComponent, e: React.MouseEvent) => {
+    if (e.button !== 0) return;
     if (tool !== 'select') return;
     if (probeDragRef.current) return; // probe drag has priority
     e.stopPropagation();
@@ -3063,7 +3099,10 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
   return (
     <div ref={containerRef} className="absolute inset-0 overflow-hidden select-none" style={{ background: '#E2E7F8', touchAction: 'none', WebkitUserSelect: 'none' }}>
       <svg
-        ref={svgRef}
+        ref={el => {
+          svgRef.current = el;
+          if (svgElementRef) svgElementRef.current = el;
+        }}
         width={canvasSize.width}
         height={canvasSize.height}
         viewBox={`${vx} ${vy} ${vw} ${vh}`}
@@ -3350,6 +3389,17 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
                   : 'default',
                 opacity: isDragging ? 0.82 : 1,
               }}>
+              {/* Pod grafikou: celá dlaždice bere události (pravý klik na „díře“ ve schématu jinak propadne na drát → menu prohlížeče). */}
+              <rect
+                x={comp.cx * GRID_SIZE + TILE_INSET}
+                y={comp.cy * GRID_SIZE + TILE_INSET}
+                width={tileSize}
+                height={tileSize}
+                rx={TILE_RADIUS}
+                ry={TILE_RADIUS}
+                fill="none"
+                style={{ pointerEvents: 'all' }}
+              />
 
               {!isSchemaMode && (
                 <rect
@@ -3390,6 +3440,43 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
                         ledBrightness={isLedType(comp.type) ? ledBrightness : undefined}
                         schemaColor={isShortCircuit && shortCircuitPathIds.comps.has(comp.id) ? '#f97316' : (isEnergized || isWired) ? '#b91c1c' : '#1a1a1a'} />
                   }
+                  {isSchemaMode &&
+                    editableSchemaValueLabels &&
+                    onSchemaValueLabelChange &&
+                    (isBatteryType(comp.type) || isResistorTypeForSchemaLabel(comp.type)) && (
+                      <foreignObject
+                        data-export-exclude="true"
+                        x={-40}
+                        y={isBatteryType(comp.type) ? 16 : 12}
+                        width={80}
+                        height={20}
+                      >
+                        <div
+                          xmlns="http://www.w3.org/1999/xhtml"
+                          className="flex h-full w-full items-center justify-center"
+                          style={{ pointerEvents: 'all' }}
+                          onPointerDown={e => e.stopPropagation()}
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => e.stopPropagation()}
+                          onContextMenu={e => e.stopPropagation()}
+                        >
+                          <input
+                            type="text"
+                            aria-label={isBatteryType(comp.type) ? 'Hodnota napětí (text ve schématu)' : 'Hodnota odporu (text ve schématu)'}
+                            className="w-[76px] max-w-[76px] rounded border border-zinc-400 bg-white px-0.5 py-0.5 text-center text-[10px] font-semibold leading-tight text-zinc-900 shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-indigo-400"
+                            style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}
+                            value={
+                              schemaValueLabels?.[comp.id] !== undefined
+                                ? schemaValueLabels[comp.id]!
+                                : isBatteryType(comp.type)
+                                  ? schemaDefaultVoltageLabel(getComponentVoltage(comp))
+                                  : schemaDefaultResistanceLabel(getComponentResistance(comp))
+                            }
+                            onChange={e => onSchemaValueLabelChange(comp.id, e.target.value)}
+                          />
+                        </div>
+                      </foreignObject>
+                    )}
                 </g>
                 {/* Bypass drát – přes střed dlaždice */}
                 {isBypassed && (
