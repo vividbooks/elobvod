@@ -1,7 +1,22 @@
 
-  import { createRoot } from "react-dom/client";
-  import App from "./app/App.tsx";
-  import "./styles/index.css";
+import { createRoot } from "react-dom/client";
+import { MantineProvider, createTheme } from "@mantine/core";
+import { AuthGate } from "./app/components/auth/AuthGate.tsx";
+import App from "./app/App.tsx";
+import "@mantine/core/styles.css";
+import "./styles/index.css";
 
-  createRoot(document.getElementById("root")!).render(<App />);
+const theme = createTheme({
+  primaryColor: "blue",
+  radius: { md: "12px", lg: "16px" },
+  fontFamily: "'Fenomen Sans', ui-sans-serif, system-ui, sans-serif",
+});
+
+createRoot(document.getElementById("root")!).render(
+  <MantineProvider theme={theme} defaultColorScheme="light">
+    <AuthGate>
+      <App />
+    </AuthGate>
+  </MantineProvider>
+);
   
