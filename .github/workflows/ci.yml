@@ -28,7 +28,15 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
+      # Vite vkládá VITE_* do bundlu při buildu – bez toho je Supabase v produkci „vypnuté“.
       - run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      # GitHub Pages: deep link /elobvod/ukol/… jinak vrací 404 bez této kopie
+      - name: SPA fallback (404 → index)
+        run: cp dist/index.html dist/404.html
 
       - name: Upload Pages artifact
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'

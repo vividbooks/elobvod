@@ -1,11 +1,28 @@
+# Electric Circuit Builder (elobvod)
 
-  # Electric Circuit Builder App (Copy)
+Editor elektrických obvodů + zadání pro studenty (Supabase).
 
-  This is a code bundle for Electric Circuit Builder App (Copy). The original project is available at https://www.figma.com/design/NGEvLzMoRuaf75hurVl2mP/Electric-Circuit-Builder-App--Copy-.
+## Spuštění
 
-  ## Running the code
+```bash
+npm i
+npm run dev
+```
 
-  Run `npm i` to install the dependencies.
+**Supabase je přednastavený** v `src/lib/supabasePublicDefaults.ts` (sdílený tým projekt, anon klíč jako u každého webu v bundlu – data chrání RLS v databázi). **Nemusíš vytvářet `.env`**, aby to fungovalo lokálně i na GitHub Pages.
 
-  Run `npm run dev` to start the development server.
-  
+### Vlastní Supabase projekt (volitelné)
+
+V kořeni vytvoř `.env` podle `.env.example` – hodnoty z env přepíší výchozí z kódu.
+
+### Databáze
+
+Jednorázově spusť v Supabase (SQL Editor): [`supabase/schema.sql`](supabase/schema.sql).
+
+## GitHub Actions
+
+Build může dál dostávat `VITE_SUPABASE_URL` a `VITE_SUPABASE_ANON_KEY` ze Secrets (přepíší výchozí v době buildu). Pokud secrets chybí, použijí se stejné výchozí hodnoty z repozitáře.
+
+## Původní design
+
+[Figma – Electric Circuit Builder](https://www.figma.com/design/NGEvLzMoRuaf75hurVl2mP/Electric-Circuit-Builder-App--Copy-).

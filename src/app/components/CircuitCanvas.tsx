@@ -1,7 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Undo2, Redo2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ComponentSvg, RealisticTile, type ComponentType, type ViewMode, type BulbState } from './ComponentSvg';
+import {
+  ComponentSvg,
+  RealisticTile,
+  schemaDefaultResistanceLabel,
+  schemaDefaultVoltageLabel,
+  type ComponentType,
+  type ViewMode,
+  type BulbState,
+} from './ComponentSvg';
 import type { Tool } from './ComponentPalette';
 import { encodeCircuit, buildShareUrl } from '../utils/circuitUrl';
 import { DraggablePanel } from './DraggablePanel';
@@ -41,6 +49,9 @@ const LED_VF = 1.8;            // V – prahové napětí LED (forward voltage, 
 const LED2_VF = 2.2;           // V – zelená LED
 const LED3_VF = 3.0;           // V – modrá LED
 const isLedType = (t: string) => t === 'led' || t === 'led2' || t === 'led3';
+const isBatteryType = (t: ComponentType) => t === 'battery' || t === 'battery2' || t === 'battery3';
+const isResistorTypeForSchemaLabel = (t: ComponentType) =>
+  t === 'resistor' || t === 'resistor2' || t === 'resistor3';
 const getLedVf = (t: string) => t === 'led3' ? LED3_VF : t === 'led2' ? LED2_VF : LED_VF;
 const LED_MIN_CURRENT = 0.001; // A – minimální proud pro svícení LED (1 mA)
 const LED_MAX_CURRENT = 0.020; // A – jmenovitý max. proud LED (20 mA) pro plný jas
@@ -106,6 +117,8 @@ interface Props {
   setTool: (t: Tool) => void;
   setZoom: (z: number) => void;
   isViewOnly?: boolean;
+  /** Optional ref to the underlying SVG element (for export/screenshot). */
+  svgElementRef?: React.MutableRefObject<SVGSVGElement | null>;
   initialState?: {
     components: PlacedComponent[];
     wires: Wire[];
@@ -123,6 +136,13 @@ interface Props {
   isTouch?: boolean;
   /** Animace elektronů podél drátů (jen realistický pohled). Výchozí false – zapnout: true nebo prop z App. */
   showWireElectrons?: boolean;
+  /** Ve schématu: u baterií a rezistorů zobraz upravitelný text hodnoty (editor kreslení). */
+  editableSchemaValueLabels?: boolean;
+  /** Přepsané štítky (klíč = id součástky). Chybí klíč → výchozí z napětí/odporu; prázdný řetězec → nic. */
+  schemaValueLabels?: Record<string, string>;
+  onSchemaValueLabelChange?: (compId: string, value: string) => void;
+  /** Volitelný obsah vpravo od Undo/Redo (např. tlačítko „Zadání“ na studentské stránce). */
+  editChromeEndSlot?: React.ReactNode;
 }
 
 interface Snapshot {
@@ -503,6 +523,47 @@ function mergeJunctionAwareWiresIntoUF(
       }
     }
   }
+}
+
+/**
+ * Union-find stejný jako topologie obvodu včetně baterie (oba póly patří do jedné součástky).
+ * Voltmetr vynechán (nekonečný odpor). Použití: sondy v různých izolovaných sítích → neplatné U.
+ */
+function buildElectricalConnectivityUnionFind(
+  components: PlacedComponent[],
+  wires: Wire[],
+  switchStates: Record<string, boolean>,
+  openCircuitIds?: Set<string>,
+) {
+  const nk = (hx: number, hy: number) => `${hx},${hy}`;
+  const uf = createUnionFindMap();
+  mergeJunctionAwareWiresIntoUF(wires, components, nk, uf);
+  const { union } = uf;
+
+  for (const comp of components) {
+    if (comp.type === 'voltmeter') continue;
+    if (comp.type === 'switch' && !switchStates[comp.id]) continue;
+    if (openCircuitIds?.has(comp.id)) continue;
+    const [t0, t1] = getTerminalHalfGrid(comp);
+    if (comp.type === 'potentiometer') {
+      const wt = getWiperTerminalHalfGrid(comp);
+      if (wt) {
+        union(nk(t0.hx, t0.hy), nk(wt.hx, wt.hy));
+        union(nk(wt.hx, wt.hy), nk(t1.hx, t1.hy));
+      } else {
+        union(nk(t0.hx, t0.hy), nk(t1.hx, t1.hy));
+      }
+    } else if (comp.type === 'npn') {
+      const bt = getBaseTerminalHalfGrid(comp);
+      union(nk(t0.hx, t0.hy), nk(t1.hx, t1.hy));
+      if (bt) {
+        union(nk(bt.hx, bt.hy), nk(t1.hx, t1.hy));
+      }
+    } else {
+      union(nk(t0.hx, t0.hy), nk(t1.hx, t1.hy));
+    }
+  }
+  return uf;
 }
 
 /**
@@ -954,7 +1015,25 @@ function computeWireDirections(
   return { wireMap, compMap };
 }
 
-export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, setZoom, isViewOnly, initialState, shareHandlerRef, onPanelOpenChange, isTouch = false, showWireElectrons = false }: Props) {
+export function CircuitCanvas({
+  tool,
+  viewMode,
+  clearTrigger,
+  zoom,
+  setTool,
+  setZoom,
+  isViewOnly,
+  svgElementRef,
+  initialState,
+  shareHandlerRef,
+  onPanelOpenChange,
+  isTouch = false,
+  showWireElectrons = false,
+  editableSchemaValueLabels = false,
+  schemaValueLabels,
+  onSchemaValueLabelChange,
+  editChromeEndSlot,
+}: Props) {
   const [components, setComponents] = useState<PlacedComponent[]>(initialState?.components ?? []);
   const [wires, setWires] = useState<Wire[]>(initialState?.wires ?? []);
   const [switchStates, setSwitchStates] = useState<Record<string, boolean>>(initialState?.switchStates ?? {});
@@ -1907,6 +1986,9 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
 
     // ── Union-find jako v MNA: dráty se dotýkají jen na vrcholech / svorkách ──
     const nk = (hx: number, hy: number) => `${hx},${hy}`;
+    const ufNet = buildElectricalConnectivityUnionFind(components, wires, switchStates, openCircuitIds);
+    const ufNetFind = ufNet.find;
+
     const ufVm = createUnionFindMap();
     mergeJunctionAwareWiresIntoUF(wires, components, nk, ufVm);
     const ufF = ufVm.find;
@@ -1942,22 +2024,23 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     );
 
     if (sources.length > 0) {
-      // Ground reference: negative terminal of the first source
-      const [g0] = getTerminalHalfGrid(sources[0]);
-      const gndGroup = ufF(nk(g0.hx, g0.hy));
+      // Referenční uzel: t1 = záporný pól (viz MNA: nPlus=nA=t0, nMinus=nB=t1)
+      const [, tNeg0] = getTerminalHalfGrid(sources[0]);
+      const gndGroup = ufF(nk(tNeg0.hx, tNeg0.hy));
       staticV.set(gndGroup, 0);
 
       // Iteratively propagate — multiple passes to resolve chains of sources
       for (let pass = 0; pass < sources.length + 1; pass++) {
         for (const src of sources) {
           const [t0, t1] = getTerminalHalfGrid(src);
-          const grpMinus = ufF(nk(t0.hx, t0.hy));
-          const grpPlus = ufF(nk(t1.hx, t1.hy));
+          const gPlus = ufF(nk(t0.hx, t0.hy)); // kladný pól
+          const gMinus = ufF(nk(t1.hx, t1.hy)); // záporný pól
           const emf = getComponentVoltage(src);
-          if (staticV.has(grpMinus) && !staticV.has(grpPlus)) {
-            staticV.set(grpPlus, staticV.get(grpMinus)! + emf);
-          } else if (staticV.has(grpPlus) && !staticV.has(grpMinus)) {
-            staticV.set(grpMinus, staticV.get(grpPlus)! - emf);
+          // V(t0) − V(t1) = E
+          if (staticV.has(gMinus) && !staticV.has(gPlus)) {
+            staticV.set(gPlus, staticV.get(gMinus)! + emf);
+          } else if (staticV.has(gPlus) && !staticV.has(gMinus)) {
+            staticV.set(gMinus, staticV.get(gPlus)! - emf);
           }
         }
       }
@@ -1970,6 +2053,15 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       if (ufVm.parent.has(key)) return ufF(key);
       for (const wire of wires) {
         if (pointOnWirePolyline(wire, hx, hy)) return ufF(wireScopedKey(wire.id, hx, hy));
+      }
+      return null;
+    };
+
+    const findNetworkGroup = (hx: number, hy: number): string | null => {
+      const key = nk(hx, hy);
+      if (ufNet.parent.has(key)) return ufNetFind(key);
+      for (const wire of wires) {
+        if (pointOnWirePolyline(wire, hx, hy)) return ufNetFind(wireScopedKey(wire.id, hx, hy));
       }
       return null;
     };
@@ -2024,6 +2116,10 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       const v2 = voltageAt(p2.hx, p2.hy);
       // If either probe is not connected to any wire, reading is 0
       if (v1 === null || v2 === null) { readings.set(comp.id, 0); continue; }
+      const net1 = findNetworkGroup(p1.hx, p1.hy);
+      const net2 = findNetworkGroup(p2.hx, p2.hy);
+      // Izolované obvody: jedno globální uzemnění v MNA dává nesmyslné rozdíly potenciálů → 0 V
+      if (net1 === null || net2 === null || net1 !== net2) { readings.set(comp.id, 0); continue; }
       readings.set(comp.id, v1 - v2);
     }
     return readings;
@@ -2132,24 +2228,32 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
     return collectWireConnPoints(wires);
   }, [wires, collectWireConnPoints]);
 
+  /** Větší tolerance na dotyku (prst / interaktivní tabule). */
+  const wireEndpointSnapDist = isTouch ? CONN_SNAP_DIST * 1.5 : CONN_SNAP_DIST;
+
+  /** Nejblížší svorka / bod na drátu k dané pozici v SVG (pro začátek tahu bez „hover“ stavu). */
+  const nearestConnAt = useCallback(
+    (svgPos: { x: number; y: number } | null): ConnPoint | null => {
+      if (!svgPos || tool !== 'wire') return null;
+      let best: ConnPoint | null = null;
+      let bestDist = wireEndpointSnapDist;
+      for (const cp of connPoints) {
+        const d = Math.hypot(cp.x - svgPos.x, cp.y - svgPos.y);
+        if (d < bestDist) { bestDist = d; best = cp; }
+      }
+      for (const wp of wireSnapPoints) {
+        const d = Math.hypot(wp.x - svgPos.x, wp.y - svgPos.y);
+        if (d < bestDist) { bestDist = d; best = wp; }
+      }
+      return best;
+    },
+    [connPoints, wireSnapPoints, tool, wireEndpointSnapDist],
+  );
+
   const nearestConn = useMemo(() => {
     if (!mouseSvgPos || tool !== 'wire') return null;
-    let best: ConnPoint | null = null;
-    let bestDist = CONN_SNAP_DIST;
-    
-    // Pick the closest snap target (components and wires equally).
-    for (const cp of connPoints) {
-      const d = Math.hypot(cp.x - mouseSvgPos.x, cp.y - mouseSvgPos.y);
-      if (d < bestDist) { bestDist = d; best = cp; }
-    }
-
-    for (const wp of wireSnapPoints) {
-      const d = Math.hypot(wp.x - mouseSvgPos.x, wp.y - mouseSvgPos.y);
-      if (d < bestDist) { bestDist = d; best = wp; }
-    }
-    
-    return best;
-  }, [mouseSvgPos, connPoints, wireSnapPoints, tool]);
+    return nearestConnAt(mouseSvgPos);
+  }, [mouseSvgPos, tool, nearestConnAt]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -2248,14 +2352,16 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       if (!pos) return;
       isDrawingRef.current = true;
       // ── Snap wire START to nearest terminal so topology always connects ──
-      const startPos = nearestConn ? { x: nearestConn.x, y: nearestConn.y } : pos;
+      const snap0 = nearestConnAt(pos);
+      const startPos = snap0 ? { x: snap0.x, y: snap0.y } : pos;
       freehandPtsRef.current = [startPos];
       freehandPathRef.current?.setAttribute('points', `${startPos.x},${startPos.y}`);
       freehandPathRef.current?.setAttribute('display', 'block');
     }
-  }, [tool, clientToSvg, panOffset, nearestConn]);
+  }, [tool, clientToSvg, panOffset, nearestConnAt]);
 
   const handleCompMouseDown = useCallback((comp: PlacedComponent, e: React.MouseEvent) => {
+    if (e.button !== 0) return;
     if (tool !== 'select') return;
     if (probeDragRef.current) return; // probe drag has priority
     e.stopPropagation();
@@ -2347,7 +2453,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
 
     const snapEndpointRequired = (pt: { x: number; y: number }): ConnPoint | null => {
       let best: ConnPoint | null = null;
-      let bestDist = CONN_SNAP_DIST;
+      let bestDist = wireEndpointSnapDist;
       for (const cp of allConns) {
         const d = Math.hypot(cp.x - pt.x, cp.y - pt.y);
         if (d < bestDist) { bestDist = d; best = cp; }
@@ -2429,7 +2535,7 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       setMouseSvgPos(null);
       setMouseCellPos(null);
     }
-  }, [pushHistory, collectWireConnPoints, isTouch]);
+  }, [pushHistory, collectWireConnPoints, isTouch, wireEndpointSnapDist]);
 
   const handleMouseUp = useCallback(() => {
     // ── Wiper drop ���─
@@ -2547,12 +2653,15 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       const pos = clientToSvg(clientX, clientY);
       if (!pos) return;
       isDrawingRef.current = true;
-      const startPos = nearestConn ? { x: nearestConn.x, y: nearestConn.y } : pos;
+      const snap0 = nearestConnAt(pos);
+      const startPos = snap0 ? { x: snap0.x, y: snap0.y } : pos;
       freehandPtsRef.current = [startPos];
       freehandPathRef.current?.setAttribute('points', `${startPos.x},${startPos.y}`);
       freehandPathRef.current?.setAttribute('display', 'block');
+      setMouseSvgPos(pos);
+      setMouseCellPos(snapCell(clientX, clientY));
     }
-  }, [tool, clientToSvg, panOffset, nearestConn, zoom]);
+  }, [tool, clientToSvg, panOffset, nearestConnAt, zoom, snapCell]);
 
   const handleSvgTouchMove = useCallback((e: React.TouchEvent<SVGSVGElement>) => {
     e.preventDefault(); // block scroll / native zoom on older Android/Safari
@@ -2991,9 +3100,17 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
   }, [shareHandlerRef]);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 overflow-hidden select-none" style={{ background: '#E2E7F8', touchAction: 'none', WebkitUserSelect: 'none' }}>
+    <div
+      ref={containerRef}
+      className="absolute inset-0 overflow-visible select-none"
+      style={{ touchAction: 'none', WebkitUserSelect: 'none' }}
+    >
+      <div className="absolute inset-0 overflow-hidden" style={{ background: '#E2E7F8' }}>
       <svg
-        ref={svgRef}
+        ref={el => {
+          svgRef.current = el;
+          if (svgElementRef) svgElementRef.current = el;
+        }}
         width={canvasSize.width}
         height={canvasSize.height}
         viewBox={`${vx} ${vy} ${vw} ${vh}`}
@@ -3280,6 +3397,17 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
                   : 'default',
                 opacity: isDragging ? 0.82 : 1,
               }}>
+              {/* Pod grafikou: celá dlaždice bere události (pravý klik na „díře“ ve schématu jinak propadne na drát → menu prohlížeče). */}
+              <rect
+                x={comp.cx * GRID_SIZE + TILE_INSET}
+                y={comp.cy * GRID_SIZE + TILE_INSET}
+                width={tileSize}
+                height={tileSize}
+                rx={TILE_RADIUS}
+                ry={TILE_RADIUS}
+                fill="none"
+                style={{ pointerEvents: 'all' }}
+              />
 
               {!isSchemaMode && (
                 <rect
@@ -3320,6 +3448,43 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
                         ledBrightness={isLedType(comp.type) ? ledBrightness : undefined}
                         schemaColor={isShortCircuit && shortCircuitPathIds.comps.has(comp.id) ? '#f97316' : (isEnergized || isWired) ? '#b91c1c' : '#1a1a1a'} />
                   }
+                  {isSchemaMode &&
+                    editableSchemaValueLabels &&
+                    onSchemaValueLabelChange &&
+                    (isBatteryType(comp.type) || isResistorTypeForSchemaLabel(comp.type)) && (
+                      <foreignObject
+                        data-export-exclude="true"
+                        x={-40}
+                        y={isBatteryType(comp.type) ? 16 : 12}
+                        width={80}
+                        height={20}
+                      >
+                        <div
+                          xmlns="http://www.w3.org/1999/xhtml"
+                          className="flex h-full w-full items-center justify-center"
+                          style={{ pointerEvents: 'all' }}
+                          onPointerDown={e => e.stopPropagation()}
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => e.stopPropagation()}
+                          onContextMenu={e => e.stopPropagation()}
+                        >
+                          <input
+                            type="text"
+                            aria-label={isBatteryType(comp.type) ? 'Hodnota napětí (text ve schématu)' : 'Hodnota odporu (text ve schématu)'}
+                            className="w-[76px] max-w-[76px] rounded border border-zinc-400 bg-white px-0.5 py-0.5 text-center text-[10px] font-semibold leading-tight text-zinc-900 shadow-sm outline-none focus-visible:ring-1 focus-visible:ring-indigo-400"
+                            style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}
+                            value={
+                              schemaValueLabels?.[comp.id] !== undefined
+                                ? schemaValueLabels[comp.id]!
+                                : isBatteryType(comp.type)
+                                  ? schemaDefaultVoltageLabel(getComponentVoltage(comp))
+                                  : schemaDefaultResistanceLabel(getComponentResistance(comp))
+                            }
+                            onChange={e => onSchemaValueLabelChange(comp.id, e.target.value)}
+                          />
+                        </div>
+                      </foreignObject>
+                    )}
                 </g>
                 {/* Bypass drát – přes střed dlaždice */}
                 {isBypassed && (
@@ -3589,28 +3754,34 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
           </div>
         </>
       )}
+      </div>
 
-      {/* Undo / Redo – only in edit mode */}
+      {/* Undo / Redo (+ volitelný slot vpravo). Bez overflow:auto — ten ořezává box-shadow ve svislém směru. */}
       {!isViewOnly && (
-        <div
-          className="absolute top-3 right-3 z-10 flex items-center rounded-full shadow-lg overflow-hidden select-none"
-          style={{ background: '#edecf0', height: 50 }}
-        >
-          <button onClick={undo} disabled={!histUI.canUndo}
-            title={isTouch ? 'Zpět' : 'Zpět (Ctrl+Z)'}
-            className="flex items-center justify-center transition-all"
-            style={{ width: 50, height: 50, background: 'transparent', touchAction: 'manipulation',
-              color: histUI.canUndo ? '#1e1b4b' : '#b0afc4', cursor: histUI.canUndo ? 'pointer' : 'default' }}>
-            <Undo2 size={16} />
-          </button>
-          <div style={{ width: 1, height: 20, background: 'rgba(113,113,122,0.25)' }} />
-          <button onClick={redo} disabled={!histUI.canRedo}
-            title={isTouch ? 'Vpřed' : 'Vpřed (Ctrl+Y)'}
-            className="flex items-center justify-center transition-all"
-            style={{ width: 50, height: 50, background: 'transparent', touchAction: 'manipulation',
-              color: histUI.canRedo ? '#1e1b4b' : '#b0afc4', cursor: histUI.canRedo ? 'pointer' : 'default' }}>
-            <Redo2 size={16} />
-          </button>
+        <div className="pointer-events-auto absolute right-2 top-2 z-10 flex max-w-[min(100%,calc(100vw-16px))] flex-nowrap items-center gap-2 overflow-visible py-2 pl-2 pr-2">
+          <div
+            className="flex h-[50px] shrink-0 items-center rounded-full shadow-lg overflow-hidden select-none"
+            style={{ background: '#ffffff' }}
+          >
+            <button onClick={undo} disabled={!histUI.canUndo}
+              title={isTouch ? 'Zpět' : 'Zpět (Ctrl+Z)'}
+              className="flex items-center justify-center transition-all"
+              style={{ width: 50, height: 50, background: 'transparent', touchAction: 'manipulation',
+                color: histUI.canUndo ? '#1e1b4b' : '#b0afc4', cursor: histUI.canUndo ? 'pointer' : 'default' }}>
+              <Undo2 size={16} />
+            </button>
+            <div style={{ width: 1, height: 20, background: 'rgba(113,113,122,0.25)' }} />
+            <button onClick={redo} disabled={!histUI.canRedo}
+              title={isTouch ? 'Vpřed' : 'Vpřed (Ctrl+Y)'}
+              className="flex items-center justify-center transition-all"
+              style={{ width: 50, height: 50, background: 'transparent', touchAction: 'manipulation',
+                color: histUI.canRedo ? '#1e1b4b' : '#b0afc4', cursor: histUI.canRedo ? 'pointer' : 'default' }}>
+              <Redo2 size={16} />
+            </button>
+          </div>
+          {editChromeEndSlot ? (
+            <div className="flex h-[50px] shrink-0 items-center">{editChromeEndSlot}</div>
+          ) : null}
         </div>
       )}
 
@@ -3631,10 +3802,10 @@ export function CircuitCanvas({ tool, viewMode, clearTrigger, zoom, setTool, set
       )}
 
       {tool === 'select' && components.length === 0 && wires.length === 0 && !isViewOnly && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-300 text-center pointer-events-none select-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-zinc-600 text-center pointer-events-none select-none">
           <div className="text-[40px] mb-2">⚡</div>
-          <div className="text-[15px]">Vyber součástku z panelu vlevo</div>
-          <div className="text-[13px] mt-1">{isTouch ? 'a klepni na mřížku' : 'a klikni na mřížku'}</div>
+          <div className="text-[15px] font-medium">Vyber součástku z panelu vlevo</div>
+          <div className="text-[13px] mt-1 text-zinc-500">{isTouch ? 'a klepni na mřížku' : 'a klikni na mřížku'}</div>
         </div>
       )}
 

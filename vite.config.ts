@@ -20,6 +20,7 @@ export default defineConfig(({ command }) => ({
     tailwindcss(),
   ],
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       // Alias @ to the src directory
       '@': path.resolve(__dirname, './src'),

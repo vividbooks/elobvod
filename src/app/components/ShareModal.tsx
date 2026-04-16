@@ -4,9 +4,13 @@ import { X, Copy, Check, Link } from 'lucide-react';
 interface Props {
   url: string;
   onClose: () => void;
+  /** Výchozí: „Sdílet obvod“ */
+  title?: string;
+  /** Výchozí text o sdíleném obvodu */
+  description?: string;
 }
 
-export function ShareModal({ url, onClose }: Props) {
+export function ShareModal({ url, onClose, title = 'Sdílet obvod', description }: Props) {
   const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -50,7 +54,7 @@ export function ShareModal({ url, onClose }: Props) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2" style={{ color: '#1e1b4b' }}>
             <Link size={16} />
-            <span style={{ fontSize: 15, fontWeight: 700 }}>Sdílet obvod</span>
+            <span style={{ fontSize: 15, fontWeight: 700 }}>{title}</span>
           </div>
           <button
             onClick={onClose}
@@ -65,7 +69,8 @@ export function ShareModal({ url, onClose }: Props) {
 
         {/* Description */}
         <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
-          Zkopíruj odkaz a pošli ho komukoliv – příjemce uvidí přesně tento obvod&nbsp;(přepínače fungují, nic nelze upravovat).
+          {description ??
+            'Zkopíruj odkaz a pošli ho komukoliv – příjemce uvidí přesně tento obvod (přepínače fungují, nic nelze upravovat).'}
         </p>
 
         {/* URL row */}

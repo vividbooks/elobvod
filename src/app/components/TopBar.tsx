@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ZoomIn, ZoomOut, Maximize, Eye, Info, X } from 'lucide-react';
 import type { ViewMode } from './ComponentSvg';
 
-const BG = '#edecf0';
+const BG = '#ffffff';
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4.0;
 /** Vnitřní zoom při startu / „výchozí“ – v UI se zobrazí jako 100 %. */
@@ -22,7 +22,7 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
   const [showInfo, setShowInfo] = useState(false);
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex shrink-0 flex-nowrap items-center gap-1">
       {/* View-only badge */}
       {isViewOnly && (
         <div
@@ -44,7 +44,7 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
         <button
           onClick={() => onZoomChange(Math.max(MIN_ZOOM, +(zoom - 0.2).toFixed(1)))}
           title="Oddálit"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-zinc-500 hover:bg-white/50 transition-colors cursor-pointer"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-zinc-500 hover:bg-zinc-100 transition-colors cursor-pointer"
         >
           <ZoomOut size={16} />
         </button>
@@ -53,7 +53,7 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
         <button
           onClick={() => onViewModeChange(isSchema ? 'realistic' : 'schema')}
           title={isSchema ? 'Přepnout na realistický pohled' : 'Přepnout na schéma'}
-          className="flex items-center gap-2 h-9 px-3 rounded-xl transition-all cursor-pointer hover:bg-white/50"
+          className="flex items-center gap-2 h-9 px-3 rounded-xl transition-all cursor-pointer hover:bg-zinc-100"
           style={{ background: 'transparent' }}
         >
           <span style={{ fontSize: 12, fontWeight: 500, color: isSchema ? '#1e1b4b' : '#9ca3af', letterSpacing: '0.01em' }}>
@@ -84,7 +84,7 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
         <button
           onClick={() => onZoomChange(Math.min(MAX_ZOOM, +(zoom + 0.2).toFixed(1)))}
           title="Přiblížit"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-zinc-500 hover:bg-white/50 transition-colors cursor-pointer"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-zinc-500 hover:bg-zinc-100 transition-colors cursor-pointer"
         >
           <ZoomIn size={16} />
         </button>
@@ -96,7 +96,7 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
         <button
           onClick={() => onZoomChange(DEFAULT_ZOOM)}
           title="Výchozí zoom"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-zinc-500 hover:bg-white/50 transition-colors cursor-pointer"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-zinc-500 hover:bg-zinc-100 transition-colors cursor-pointer"
         >
           <Maximize size={15} />
         </button>
@@ -111,7 +111,7 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
       <button
         onClick={() => setShowInfo(true)}
         title="Nápověda"
-        className="w-[50px] h-[50px] rounded-full shadow-lg flex items-center justify-center text-zinc-500 hover:bg-white/80 transition-colors cursor-pointer"
+        className="w-[50px] h-[50px] rounded-full shadow-lg flex items-center justify-center text-zinc-500 hover:bg-zinc-100 transition-colors cursor-pointer"
         style={{ background: BG }}
       >
         <Info size={18} />
@@ -188,6 +188,9 @@ export function TopBar({ viewMode, onViewModeChange, zoom, onZoomChange, isViewO
               <Section title="Zkratový obvod">
                 Při zkratu (≥ 10 A) se postižená část obvodu zvýrazní <b style={{ color: '#f97316' }}>oranžově</b>.
               </Section>
+              <p className="pt-4 mt-2 border-t border-zinc-200/80 text-zinc-500 text-center" style={{ fontSize: 12 }}>
+                Version 1.05
+              </p>
             </div>
           </div>
         </div>,

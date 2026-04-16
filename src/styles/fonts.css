@@ -1,0 +1,44 @@
+/**
+ * Fenomen Sans — web subset (300, 400, 400 italic, 600, 700).
+ * Zdroj: https://github.com/jjinni/fenomen-sans-typeface
+ */
+
+@font-face {
+  font-family: 'Fenomen Sans';
+  src: url('../assets/fonts/fenomen/fenomen-sans-300.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Fenomen Sans';
+  src: url('../assets/fonts/fenomen/fenomen-sans-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Fenomen Sans';
+  src: url('../assets/fonts/fenomen/fenomen-sans-400-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Fenomen Sans';
+  src: url('../assets/fonts/fenomen/fenomen-sans-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Fenomen Sans';
+  src: url('../assets/fonts/fenomen/fenomen-sans-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
