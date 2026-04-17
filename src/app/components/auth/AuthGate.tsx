@@ -11,6 +11,18 @@ const AUTH_REDIRECT_URL =
   "https://app.vividbooks.com";
 const ENABLE_AUTH_GATE = import.meta.env.VITE_ENABLE_AUTH_GATE === "true";
 
+function shouldBypassAuthGate(hostname: string): boolean {
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+    return true;
+  }
+
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+    return true;
+  }
+
+  return hostname === "vividboard.cz" || hostname.endsWith(".vividboard.cz");
+}
+
 function readCookie(name: string): string | null {
   const entries = document.cookie.split(";").map((part) => part.trim());
   const prefix = `${name}=`;
@@ -67,7 +79,7 @@ export function AuthGate({ children }: PropsWithChildren) {
   const [status, setStatus] = useState<AuthStatus>("checking");
 
   useEffect(() => {
-    if (!ENABLE_AUTH_GATE) {
+    if (!ENABLE_AUTH_GATE || shouldBypassAuthGate(window.location.hostname)) {
       setStatus("allowed");
       return;
     }
