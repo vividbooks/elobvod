@@ -1276,6 +1276,8 @@ export function CircuitCanvas({
         if (isLedType(comp.type) && blockedLeds.has(comp.id)) continue;
         // Přeskočit cutoff NPN (otevřený obvod)
         if (comp.type === 'npn' && blockedNpns.has(comp.id)) continue;
+        // Otevřený vypínač nevede proud — oba kontakty mohou být v energizedNodes, ale nesmí se modelovat jako TINY_R
+        if (comp.type === 'switch' && !switchStates[comp.id]) continue;
 
         const [t0, t1] = getTerminalHalfGrid(comp);
         const nA = nodeIdx.get(ufFind(nodeKey(t0.hx, t0.hy)))!;
@@ -1368,7 +1370,7 @@ export function CircuitCanvas({
               // nesmí se přidávat do rBranches
               R = -1; // sentinel – přeskočit rBranches.push
               break;
-            default: // switch (closed), ammeter
+            default: // vypínač (zavřený), ampérmetr, …
               R = TINY_R; break;
           }
           if (R >= 0) rBranches.push({ compId: comp.id, nA, nB, R });
@@ -1602,7 +1604,7 @@ export function CircuitCanvas({
       blockedNpnIds: blockedNpns,
       npnDebug,
     };
-  }, [components, wires, circuitAnalysis, getComponentVoltage, getComponentResistance, getSourceInternalResistance, wiperPositions, bypassedResistors]);
+  }, [components, wires, circuitAnalysis, switchStates, getComponentVoltage, getComponentResistance, getSourceInternalResistance, wiperPositions, bypassedResistors]);
 
   // ── Display-corrected analysis: excludes blocked LEDs as open circuits ──
   const openCircuitIds = useMemo(() => {
