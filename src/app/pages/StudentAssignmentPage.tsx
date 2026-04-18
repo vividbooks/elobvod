@@ -76,7 +76,8 @@ export default function StudentAssignmentPage() {
   const [stepIndex, setStepIndex] = useState(0);
 
   const [gateName, setGateName] = useState('');
-  const [studentName, setStudentName] = useState<string | null>(null);
+  /** Jméno ve formuláři (i prázdný řetězec); synchronizuje se s sessionStorage pro dané zadání. */
+  const [studentName, setStudentName] = useState('');
   const [submitNameOpen, setSubmitNameOpen] = useState(false);
   const [studentNote, setStudentNote] = useState('');
 
@@ -123,7 +124,7 @@ export default function StudentAssignmentPage() {
       return;
     }
     const saved = sessionStorage.getItem(nameStorageKey(assignmentId));
-    if (saved?.trim()) setStudentName(saved.trim());
+    if (saved != null) setStudentName(saved);
     const savedNote = sessionStorage.getItem(noteStorageKey(assignmentId));
     if (savedNote != null) setStudentNote(savedNote);
 
@@ -211,15 +212,26 @@ export default function StudentAssignmentPage() {
 
     const saved =
       assignmentId ? sessionStorage.getItem(nameStorageKey(assignmentId))?.trim() : '';
-    const known = studentName?.trim() || saved;
+    const known = studentName.trim() || saved;
     if (known) {
       void performSubmit(encoded, known);
       return;
     }
 
-    setGateName(saved ?? '');
+    setGateName(studentName.trim() || saved || '');
     setSubmitNameOpen(true);
   }, [assignmentId, studentName, performSubmit]);
+
+  const persistStudentName = useCallback(
+    (value: string) => {
+      setStudentName(value);
+      if (!assignmentId) return;
+      const t = value.trim();
+      if (t) sessionStorage.setItem(nameStorageKey(assignmentId), value);
+      else sessionStorage.removeItem(nameStorageKey(assignmentId));
+    },
+    [assignmentId],
+  );
 
   const confirmNameAndSubmit = useCallback(() => {
     const n = gateName.trim();
@@ -227,8 +239,7 @@ export default function StudentAssignmentPage() {
       toast.error('Zadej jméno');
       return;
     }
-    if (assignmentId) sessionStorage.setItem(nameStorageKey(assignmentId), n);
-    setStudentName(n);
+    persistStudentName(n);
 
     const fn = shareHandlerRef.current;
     if (!fn) {
@@ -245,7 +256,7 @@ export default function StudentAssignmentPage() {
     }
     setSubmitNameOpen(false);
     void performSubmit(encoded, n);
-  }, [assignmentId, gateName, performSubmit]);
+  }, [assignmentId, gateName, performSubmit, persistStudentName]);
 
   if (!assignmentId) {
     return (
@@ -501,15 +512,20 @@ export default function StudentAssignmentPage() {
                 />
               </section>
 
-              <div className="rounded-lg border border-white/10 bg-[#4f566b] px-3 py-2 text-xs text-[#c8cedf]">
-                {studentName ? (
-                  <span>
-                    <span className="font-medium text-white">Jméno:</span> {studentName}
-                  </span>
-                ) : (
-                  <span className="text-[#9ca3bc]">Jméno se doplní při odevzdání.</span>
-                )}
-              </div>
+              <section className="space-y-2 rounded-xl border border-white/10 bg-[#4f566b] p-3 shadow-sm">
+                <Label htmlFor="student-name-aside" className="text-xs font-medium text-[#c8cedf]">
+                  Tvé jméno{' '}
+                  <span className="font-normal text-[#9ca3bc]">(uvidí ho učitel u odevzdání)</span>
+                </Label>
+                <Input
+                  id="student-name-aside"
+                  value={studentName}
+                  onChange={e => persistStudentName(e.target.value)}
+                  placeholder="Např. Jana Nováková"
+                  autoComplete="name"
+                  className="h-10 rounded-lg border-white/15 bg-[#3d4456] text-sm text-white shadow-none placeholder:text-[#9ca3bc] focus-visible:border-[#fbc02d]/50 focus-visible:ring-2 focus-visible:ring-[#fbc02d]/25"
+                />
+              </section>
             </div>
 
             <footer className="shrink-0 border-t border-[#4a5163] bg-[#4a5163] p-4">
