@@ -3444,7 +3444,9 @@ export function CircuitCanvas({
                         ledBrightness={isLedType(comp.type) ? ledBrightness : undefined}
                         rotation={comp.rotation}
                       />
-                    : <ComponentSvg type={comp.type} mode="schema" isOn={effectiveIsOn} bulbState={effectiveBulbState} current={compCurrent} voltage={comp.type === 'voltmeter' ? (voltmeterReadings.get(comp.id) ?? 0) : getComponentVoltage(comp)} resistance={getComponentResistance(comp)}
+                    : <ComponentSvg type={comp.type} mode="schema" isOn={effectiveIsOn} bulbState={effectiveBulbState}
+                        current={editableSchemaValueLabels && comp.type === 'ammeter' ? 0 : compCurrent}
+                        voltage={comp.type === 'voltmeter' ? (editableSchemaValueLabels ? 0 : (voltmeterReadings.get(comp.id) ?? 0)) : getComponentVoltage(comp)} resistance={getComponentResistance(comp)}
                         wiperPosition={comp.type === 'potentiometer' ? (wiperPositions[comp.id] ?? 0.5) : undefined}
                         milliMode={comp.type === 'ammeter' ? (ammeterMilliMode[comp.id] ?? false) : undefined}
                         ledBrightness={isLedType(comp.type) ? ledBrightness : undefined}
