@@ -382,58 +382,114 @@ function forEachHalfGridOnPolyline(
   }
 }
 
-function distPointToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const abx = bx - ax;
-  const aby = by - ay;
-  const apx = px - ax;
-  const apy = py - ay;
-  const abLen2 = abx * abx + aby * aby;
-  if (abLen2 < 1e-12) return Math.hypot(apx, apy);
-  let t = (apx * abx + apy * aby) / abLen2;
-  t = Math.max(0, Math.min(1, t));
-  const qx = ax + t * abx;
-  const qy = ay + t * aby;
-  return Math.hypot(px - qx, py - qy);
-}
-
-/** True when (hx,hy) lies inside the drawn tile rect and not on allowed connector corridors (main terminals / aux). */
-function isHalfGridPointUnderComponentTile(comp: PlacedComponent, hx: number, hy: number): boolean {
+/** Střed políčka (hx,hy) leží uvnitř obdélníku dlaždice (stejně jako kreslení součástky). */
+function halfGridCenterInTileRect(comp: PlacedComponent, hx: number, hy: number): boolean {
   const px = hx * HALF;
   const py = hy * HALF;
   const tileL = comp.cx * GRID_SIZE + TILE_INSET;
   const tileT = comp.cy * GRID_SIZE + TILE_INSET;
   const tileR = comp.cx * GRID_SIZE + GRID_SIZE - TILE_INSET;
   const tileB = comp.cy * GRID_SIZE + GRID_SIZE - TILE_INSET;
-  if (px < tileL || px > tileR || py < tileT || py > tileB) return false;
+  return px >= tileL && px <= tileR && py >= tileT && py <= tileB;
+}
 
-  const nearMain = 15;
-  const [t0, t1] = getConnPoints(comp);
-  if (distPointToSegment(px, py, t0.x, t0.y, t1.x, t1.y) <= nearMain) return false;
+/** Všechny svorky, přes které smí drát vstoupit na dlaždici (včetně stírače / báze). */
+function getWireCheckTerminals(comp: PlacedComponent): { hx: number; hy: number }[] {
+  const [t0, t1] = getTerminalHalfGrid(comp);
+  const list: { hx: number; hy: number }[] = [t0, t1];
+  if (comp.type === 'potentiometer') {
+    const w = getWiperTerminalHalfGrid(comp);
+    if (w) list.push(w);
+  } else if (comp.type === 'npn') {
+    const b = getBaseTerminalHalfGrid(comp);
+    if (b) list.push(b);
+  }
+  return list;
+}
 
-  const nearAux = 22;
-  const wp = getWiperConnPoint(comp);
-  if (wp && Math.hypot(px - wp.x, py - wp.y) <= nearAux) return false;
-  const bp = getBaseConnPoint(comp);
-  if (bp && Math.hypot(px - bp.x, py - bp.y) <= nearAux) return false;
+function segmentTouchesAnyTerminal(
+  a: { hx: number; hy: number },
+  b: { hx: number; hy: number },
+  terminals: { hx: number; hy: number }[],
+): boolean {
+  return terminals.some(
+    t => (a.hx === t.hx && a.hy === t.hy) || (b.hx === t.hx && b.hy === t.hy),
+  );
+}
 
-  return true;
+/** Bod na ose mezi dvěma hlavními svorkami (vodorovně nebo svisle). */
+function onMainAxisBetween(
+  hx: number,
+  hy: number,
+  t0: { hx: number; hy: number },
+  t1: { hx: number; hy: number },
+): boolean {
+  if (t0.hx === t1.hx) {
+    const lo = Math.min(t0.hy, t1.hy);
+    const hi = Math.max(t0.hy, t1.hy);
+    return hx === t0.hx && hy >= lo && hy <= hi;
+  }
+  if (t0.hy === t1.hy) {
+    const lo = Math.min(t0.hx, t1.hx);
+    const hi = Math.max(t0.hx, t1.hx);
+    return hy === t0.hy && hx >= lo && hx <= hi;
+  }
+  return false;
+}
+
+/**
+ * Drát „pod“ součástkou: vede přes dlaždici bez připojení na svorku.
+ * Úsek je OK, pokud končí nebo začíná na některé svorce, nebo je to jeden spojitý
+ * úsek mezi oběma hlavními svorkami v téže polylinii (import / výjimečné zapojení).
+ */
+function wirePolylineViolatesComponent(
+  points: { hx: number; hy: number }[],
+  comp: PlacedComponent,
+): boolean {
+  if (points.length < 2) return false;
+  const terminals = getWireCheckTerminals(comp);
+  const termKey = new Set(terminals.map(t => `${t.hx},${t.hy}`));
+  const vertKey = new Set(points.map(p => `${p.hx},${p.hy}`));
+  const [t0, t1] = getTerminalHalfGrid(comp);
+  const hasBothMainTerminalsInWire =
+    vertKey.has(`${t0.hx},${t0.hy}`) && vertKey.has(`${t1.hx},${t1.hy}`);
+
+  let bad = false;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    forEachHalfGridOnPolyline([a, b], (hx, hy) => {
+      if (bad) return;
+      if (!halfGridCenterInTileRect(comp, hx, hy)) return;
+      const k = `${hx},${hy}`;
+      if (termKey.has(k)) return;
+      if (segmentTouchesAnyTerminal(a, b, terminals)) return;
+      if (hasBothMainTerminalsInWire && onMainAxisBetween(hx, hy, t0, t1)) return;
+      bad = true;
+    });
+  }
+  return bad;
 }
 
 function wirePolylinePassesUnderComponentTile(
   points: { hx: number; hy: number }[],
   components: PlacedComponent[],
 ): boolean {
-  let bad = false;
-  forEachHalfGridOnPolyline(points, (hx, hy) => {
-    if (bad) return;
-    for (const comp of components) {
-      if (isHalfGridPointUnderComponentTile(comp, hx, hy)) {
-        bad = true;
-        return;
-      }
-    }
-  });
-  return bad;
+  for (const comp of components) {
+    if (wirePolylineViolatesComponent(points, comp)) return true;
+  }
+  return false;
+}
+
+function anyWirePassesUnderSomeComponent(
+  wires: Wire[],
+  components: PlacedComponent[],
+): boolean {
+  for (const w of wires) {
+    if (w.points.length < 2) continue;
+    if (wirePolylinePassesUnderComponentTile(w.points, components)) return true;
+  }
+  return false;
 }
 
 function createUnionFindMap() {
@@ -2602,6 +2658,12 @@ export function CircuitCanvas({
         const movedComp: PlacedComponent = { ...orig, cx: dragTarget.cx, cy: dragTarget.cy };
         const cur = stateRef.current;
         const newComponents = cur.components.map(c => c.id === movedComp.id ? movedComp : c);
+        if (anyWirePassesUnderSomeComponent(cur.wires, newComponents)) {
+          toast.error('Drát nesmí vést pod součástkou. Přesuň součástku jinam nebo uprav dráty.');
+          dragRef.current = null;
+          setDragTarget(null);
+          return;
+        }
         setComponents(newComponents);
         pushHistory({ ...cur, components: newComponents });
         draggedLastRef.current = true;
@@ -2821,6 +2883,10 @@ export function CircuitCanvas({
               ...cur.wires.slice(hit.wireIndex + 1),
             ];
             const newComponents = [...cur.components, newComp];
+            if (anyWirePassesUnderSomeComponent(newWires, newComponents)) {
+              toast.error('Drát nesmí vést přes součástku. Objeď ji po obvodu mřížky.');
+              return;
+            }
             setComponents(newComponents);
             setWires(newWires);
             pushHistory({ ...cur, components: newComponents, wires: newWires });
