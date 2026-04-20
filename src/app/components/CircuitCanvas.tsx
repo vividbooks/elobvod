@@ -66,8 +66,8 @@ const NPN_RCE_SAT = 1;           // Ω – collector-emitter resistance in satur
 const NPN_VCE_SAT = 0.2;         // V – VCE saturation threshold
 
 // Prahové proudy (stejné pro všechny typy)
-//   off:    I ≤ 300 mA
-//   dim:    300 mA < I ≤ 500 mA
+//   off:    I < 300 mA (přísně pod — při přesně 300 mA už „dim“, ať sériové větve neblikají kvůli floatu)
+//   dim:    300 mA ≤ I ≤ 500 mA
 //   on:     500 mA < I ≤ 800 mA
 //   bright: 800 mA < I ≤ 1500 mA
 //   broken: I > 1500 mA
@@ -3406,7 +3406,7 @@ export function CircuitCanvas({
           if (comp.type === 'bulb' || comp.type === 'bulb2' || comp.type === 'bulb3') {
             if (rawBulbState === 'broken') {
               effectiveBulbState = 'broken';
-            } else if (!isEnergized || compCurrent <= BULB_OFF_MAX) {
+            } else if (!isEnergized || compCurrent < BULB_OFF_MAX) {
               effectiveBulbState = 'off';
             } else if (compCurrent <= BULB_DIM_MAX) {
               effectiveBulbState = 'dim';
@@ -3569,7 +3569,6 @@ export function CircuitCanvas({
                   />
                 )}
               </g>
-
 
             </g>
           );
