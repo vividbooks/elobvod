@@ -30,8 +30,8 @@ const BATTERY2_INTERNAL_R = 0;    // Ω (ideální zdroj)
 const BATTERY3_INTERNAL_R = 0;    // Ω (ideální zdroj)
 // Vnitřní odpor reálných zdrojů
 const BATTERY_REAL_R = 2.0;       // Ω (reálná baterie 4.5V)
-const BATTERY2_REAL_R = 3.0;      // Ω (reálná baterie 9V)
-const BATTERY3_REAL_R = 4.0;      // Ω (reálná baterie 12V)
+const BATTERY2_REAL_R = 1.0;      // Ω (reálná baterie 9V)
+const BATTERY3_REAL_R = 1.0;      // Ω (reálná baterie 12V)
 
 const RESISTOR_R = 50.0;          // Ω (slabý)
 const RESISTOR2_R = 500.0;        // Ω (střední)
