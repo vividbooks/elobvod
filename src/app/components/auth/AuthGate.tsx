@@ -20,7 +20,12 @@ function shouldBypassAuthGate(hostname: string): boolean {
     return true;
   }
 
-  return hostname === "vividboard.cz" || hostname.endsWith(".vividboard.cz");
+  return (
+    hostname === "vividboard.cz" ||
+    hostname.endsWith(".vividboard.cz") ||
+    hostname === "tagline.cz" ||
+    hostname.endsWith(".tagline.cz")
+  );
 }
 
 function readCookie(name: string): string | null {
