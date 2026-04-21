@@ -246,11 +246,13 @@ export function RealisticTile({
   type, isOn = false, bulbState,
   isEnergized = false, electronForward = true,
   current = 0, electronSpeed = 60, voltage, resistance, wiperPosition, milliMode, ledBrightness,
+  showBulbNominal = false,
   rotation = 0,
 }: {
   type: ComponentType; isOn?: boolean; bulbState?: BulbState;
   isEnergized?: boolean; electronForward?: boolean;
   current?: number; electronSpeed?: number; voltage?: number; resistance?: number; wiperPosition?: number; milliMode?: boolean; ledBrightness?: number;
+  showBulbNominal?: boolean;
   rotation?: number;
 }) {
   // Ampérmetr má vlastní komponent kvůli clipPath (potřebuje unikátní ID)
@@ -266,7 +268,7 @@ export function RealisticTile({
       viewBox={TILE_VIEWBOXES[type]}
       style={{ overflow: 'visible' }}
     >
-      <RealisticContent type={type} isOn={isOn} bulbState={bulbState} voltage={voltage} resistance={resistance} wiperPosition={wiperPosition} ledBrightness={ledBrightness} rotation={rotation} />
+      <RealisticContent type={type} isOn={isOn} bulbState={bulbState} voltage={voltage} resistance={resistance} wiperPosition={wiperPosition} ledBrightness={ledBrightness} rotation={rotation} showBulbNominal={showBulbNominal} />
       {/* Electrons in components – disabled */}
     </svg>
   );
@@ -501,7 +503,7 @@ function VoltmeterTile({ voltage = 0, rotation = 0 }: { voltage?: number; rotati
 }
 
 /* ─── Úplný obsah každé dlaždice (karta + součástka) ─── */
-function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPosition, ledBrightness, rotation = 0 }: { type: ComponentType; isOn: boolean; bulbState?: BulbState; voltage?: number; resistance?: number; wiperPosition?: number; ledBrightness?: number; rotation?: number }) {
+function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPosition, ledBrightness, rotation = 0, showBulbNominal = false }: { type: ComponentType; isOn: boolean; bulbState?: BulbState; voltage?: number; resistance?: number; wiperPosition?: number; ledBrightness?: number; rotation?: number; showBulbNominal?: boolean }) {
   const [lcx, lcy] = LEDGE_CENTERS[type] ?? [68, 55];
   const ledgeT = rotation ? `rotate(${-rotation}, ${lcx}, ${lcy})` : undefined;
   
@@ -973,14 +975,31 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
             x1="85.6229" y1="63.8562" x2="83.3669" y2="93.5064"/>
           </g>{/* end scaled bulb body */}
 
-          {/* ═══ Štítek stavu ��══ */}
-          {bs !== 'off' && !isBroken && (
-            <text x="68" y="145" textAnchor="middle"
-              fill={bs === 'dim' ? '#d4aa50' : bs === 'bright' ? '#f59e0b' : '#216de8'}
-              fontSize="18" fontFamily="'Fenomen Sans', Arial, sans-serif" fontWeight="700" opacity="0.75"
-            >
-              {bs === 'dim' ? '○' : bs === 'on' ? '◑' : '●'}
+          {/* ═══ Popisek (nom. napětí) / štítek stavu ═══ */}
+          {!isBroken && showBulbNominal ? (
+            <text fill="#6b7280" textAnchor="middle" x="68" y="150">
+              <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="36" fontWeight="500">
+                {type === 'bulb' ? '4,5' : type === 'bulb2' ? '9' : '12'}{' '}
+              </tspan>
+              <tspan fontFamily="'Fenomen Sans', Arial, sans-serif" fontSize="32" fontWeight="700">
+                V
+              </tspan>
             </text>
+          ) : (
+            bs !== 'off' && !isBroken && (
+              <text
+                x="68"
+                y="145"
+                textAnchor="middle"
+                fill={bs === 'dim' ? '#d4aa50' : bs === 'bright' ? '#f59e0b' : '#216de8'}
+                fontSize="18"
+                fontFamily="'Fenomen Sans', Arial, sans-serif"
+                fontWeight="700"
+                opacity="0.75"
+              >
+                {bs === 'dim' ? '○' : bs === 'on' ? '◑' : '●'}
+              </text>
+            )
           )}
           {/* ═══ Štítek ROZBITÁ – velký a výrazný ═══ */}
           {isBroken && (

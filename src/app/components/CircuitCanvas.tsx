@@ -1094,6 +1094,7 @@ export function CircuitCanvas({
   const [wires, setWires] = useState<Wire[]>(initialState?.wires ?? []);
   const [switchStates, setSwitchStates] = useState<Record<string, boolean>>(initialState?.switchStates ?? {});
   const [bulbStates, setBulbStates] = useState<Record<string, BulbState>>({});
+  const [bulbNominalId, setBulbNominalId] = useState<string | null>(null);
   const [voltageSettings, setVoltageSettings] = useState<Record<string, number>>(initialState?.voltageSettings ?? {});
   const [resistanceSettings, setResistanceSettings] = useState<Record<string, number>>(initialState?.resistanceSettings ?? {});
   const [realSources, setRealSources] = useState<Record<string, boolean>>(initialState?.realSources ?? {});
@@ -1107,6 +1108,8 @@ export function CircuitCanvas({
   useEffect(() => {
     onPanelOpenChange?.(editingVoltageId !== null || editingResistanceId !== null);
   }, [editingVoltageId, editingResistanceId, onPanelOpenChange]);
+
+  // bulbNominalId is a simple toggle (click again to hide)
 
   // ── Voltmeter probes ──
   const [voltmeterProbes, setVoltmeterProbes] = useState<Record<string, VoltmeterProbes>>({});
@@ -2959,12 +2962,15 @@ export function CircuitCanvas({
     } else if (comp.type === 'switch' && tool === 'select') {
       setSwitchStates(prev => ({ ...prev, [comp.id]: !prev[comp.id] }));
     } else if ((comp.type === 'bulb' || comp.type === 'bulb2' || comp.type === 'bulb3' || isLedType(comp.type)) && tool === 'select') {
-      // Click on broken bulb/LED → "replace" it (fix). Otherwise do nothing – physics controls brightness.
+      // Click on broken bulb/LED → "replace" it (fix). For unbroken bulbs show nominal voltage label.
       setBulbStates(prev => {
         if (prev[comp.id] === 'broken') {
           const next = { ...prev };
           delete next[comp.id];
           return next;
+        }
+        if (comp.type === 'bulb' || comp.type === 'bulb2' || comp.type === 'bulb3') {
+          setBulbNominalId(prev => (prev === comp.id ? null : comp.id));
         }
         return prev;
       });
@@ -3509,6 +3515,7 @@ export function CircuitCanvas({
                         milliMode={comp.type === 'ammeter' ? (ammeterMilliMode[comp.id] ?? false) : undefined}
                         ledBrightness={isLedType(comp.type) ? ledBrightness : undefined}
                         rotation={comp.rotation}
+                        showBulbNominal={bulbNominalId === comp.id}
                       />
                     : <ComponentSvg type={comp.type} mode="schema" isOn={effectiveIsOn} bulbState={effectiveBulbState}
                         current={editableSchemaValueLabels && comp.type === 'ammeter' ? 0 : compCurrent}
@@ -3518,6 +3525,7 @@ export function CircuitCanvas({
                         ledBrightness={isLedType(comp.type) ? ledBrightness : undefined}
                         schemaColor={isShortCircuit && shortCircuitPathIds.comps.has(comp.id) ? '#f97316' : (isEnergized || isWired) ? '#b91c1c' : '#1a1a1a'} />
                   }
+
                   {isSchemaMode &&
                     editableSchemaValueLabels &&
                     onSchemaValueLabelChange &&
