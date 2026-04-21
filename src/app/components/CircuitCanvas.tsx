@@ -1095,6 +1095,7 @@ export function CircuitCanvas({
   const [switchStates, setSwitchStates] = useState<Record<string, boolean>>(initialState?.switchStates ?? {});
   const [bulbStates, setBulbStates] = useState<Record<string, BulbState>>({});
   const [bulbNominalId, setBulbNominalId] = useState<string | null>(null);
+  const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
   const [voltageSettings, setVoltageSettings] = useState<Record<string, number>>(initialState?.voltageSettings ?? {});
   const [resistanceSettings, setResistanceSettings] = useState<Record<string, number>>(initialState?.resistanceSettings ?? {});
   const [realSources, setRealSources] = useState<Record<string, boolean>>(initialState?.realSources ?? {});
@@ -2368,16 +2369,50 @@ export function CircuitCanvas({
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      // Don't steal keys while typing in inputs/textareas/contenteditable
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName?.toLowerCase();
+      if (el && (tag === 'input' || tag === 'textarea' || (el as any).isContentEditable)) return;
+
       if (e.key === 'Escape') setTool('select');
       if (e.key === 'v' || e.key === 'V') setTool('select');
       if (e.key === 'h' || e.key === 'H') setTool('pan');
       if (e.key === 'e' || e.key === 'E') setTool('eraser');
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedCompId && !isViewOnly) {
+        e.preventDefault();
+        const cur = stateRef.current;
+        const comp = cur.components.find(c => c.id === selectedCompId);
+        if (!comp) {
+          setSelectedCompId(null);
+          return;
+        }
+        const newComponents = cur.components.filter(c => c.id !== comp.id);
+        const newSwitch = { ...cur.switchStates }; delete newSwitch[comp.id];
+        const newBulb = { ...cur.bulbStates }; delete newBulb[comp.id];
+        setComponents(newComponents);
+        setSwitchStates(newSwitch);
+        setBulbStates(newBulb);
+        setSelectedCompId(null);
+        if (bulbNominalId === comp.id) setBulbNominalId(null);
+        if (editingVoltageId === comp.id) setEditingVoltageId(null);
+        if (editingResistanceId === comp.id) setEditingResistanceId(null);
+        // Clean up voltage/resistance/real settings and probes
+        setVoltageSettings(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
+        setResistanceSettings(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
+        setRealSources(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
+        setVoltmeterProbes(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
+        setWiperPositions(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
+        setAmmeterMilliMode(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
+        setBypassedResistors(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
+        pushHistory({ components: newComponents, wires: cur.wires, switchStates: newSwitch, bulbStates: newBulb });
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [setTool, undo, redo]);
+  }, [setTool, undo, redo, selectedCompId, isViewOnly, pushHistory, bulbNominalId, editingVoltageId, editingResistanceId]);
 
   const clientToSvg = useCallback((cx: number, cy: number) => {
     const svg = svgRef.current;
@@ -2404,6 +2439,12 @@ export function CircuitCanvas({
 
   const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (e.button !== 0) return;
+    // Click on empty canvas clears selection
+    setSelectedCompId(null);
+    if (isViewOnly) {
+      panStartRef.current = { cx: e.clientX, cy: e.clientY, px: panOffset.x, py: panOffset.y };
+      return;
+    }
     if (tool === 'pan') {
       panStartRef.current = { cx: e.clientX, cy: e.clientY, px: panOffset.x, py: panOffset.y };
       return;
@@ -2419,7 +2460,7 @@ export function CircuitCanvas({
       freehandPathRef.current?.setAttribute('points', `${startPos.x},${startPos.y}`);
       freehandPathRef.current?.setAttribute('display', 'block');
     }
-  }, [tool, clientToSvg, panOffset, nearestConnAt]);
+  }, [tool, clientToSvg, panOffset, nearestConnAt, isViewOnly]);
 
   const handleCompMouseDown = useCallback((comp: PlacedComponent, e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -2461,7 +2502,7 @@ export function CircuitCanvas({
       return;
     }
 
-    if (panStartRef.current && tool === 'pan') {
+    if (panStartRef.current && (tool === 'pan' || isViewOnly)) {
       const dx = (e.clientX - panStartRef.current.cx) / zoom;
       const dy = (e.clientY - panStartRef.current.cy) / zoom;
       setPanOffset({ x: panStartRef.current.px + dx, y: panStartRef.current.py + dy });
@@ -2490,7 +2531,7 @@ export function CircuitCanvas({
         freehandPtsRef.current.map(p => `${p.x},${p.y}`).join(' '),
       );
     }
-  }, [tool, zoom, snapCell, clientToSvg, isCellOccupied]);
+  }, [tool, zoom, snapCell, clientToSvg, isCellOccupied, isViewOnly]);
 
   const finishFreehand = useCallback(() => {
     if (!isDrawingRef.current) return;
@@ -2909,6 +2950,10 @@ export function CircuitCanvas({
     if (draggedLastRef.current) { draggedLastRef.current = false; return; }
     const cur = stateRef.current;
 
+    if (!isViewOnly && tool === 'select' && !isComponentTool) {
+      setSelectedCompId(comp.id);
+    }
+
     // ── Replace component when a component tool is active ──
     if (isComponentTool) {
       const newType = tool as ComponentType;
@@ -3126,6 +3171,7 @@ export function CircuitCanvas({
   const cursor =
     wiperDragRef.current ? 'ew-resize'
     : probeDragRef.current ? 'grabbing'
+    : isViewOnly ? (panStartRef.current ? 'grabbing' : 'grab')
     : tool === 'pan'    ? (panStartRef.current ? 'grabbing' : 'grab')
     : tool === 'wire'   ? 'crosshair'
     : tool === 'eraser' ? 'pointer'
@@ -4003,6 +4049,9 @@ export function CircuitCanvas({
         if (!comp) return null;
 
         const currentResistance = resistanceSettings[comp.id] ?? getComponentResistance(comp);
+        const wiper = comp.type === 'potentiometer' ? (wiperPositions[comp.id] ?? 0.5) : 0.5;
+        const wiperLeftR = comp.type === 'potentiometer' ? currentResistance * wiper : 0;
+        const wiperRightR = comp.type === 'potentiometer' ? currentResistance * (1 - wiper) : 0;
 
         // Determine range and step based on resistor type
         let minR: number, maxR: number, step: number;
@@ -4028,7 +4077,7 @@ export function CircuitCanvas({
             const kOhms = r / 1000;
             return kOhms.toFixed(kOhms % 1 === 0 ? 0 : 1).replace('.', ',');
           }
-          return r.toString();
+          return r.toFixed(r % 1 === 0 ? 0 : 1).replace('.', ',');
         };
 
         const getDisplayUnit = (r: number): string => r >= 1000 ? 'kΩ' : 'Ω';
@@ -4042,6 +4091,25 @@ export function CircuitCanvas({
               </div>
               <div className="text-[13px] text-gray-400 mt-1">{getDisplayUnit(currentResistance)}</div>
             </div>
+
+            {/* Potentiometer wiper current resistance */}
+            {comp.type === 'potentiometer' && (
+              <div className="mb-5 rounded-xl bg-gray-50 px-4 py-3 text-[12px] text-gray-600">
+                <div className="font-medium text-gray-500 mb-1">Jezdec (aktuálně)</div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-gray-500">levá → jezdec</span>
+                  <span className="font-semibold text-gray-800">
+                    {formatResistance(wiperLeftR)} {getDisplayUnit(wiperLeftR)}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-gray-500">jezdec → pravá</span>
+                  <span className="font-semibold text-gray-800">
+                    {formatResistance(wiperRightR)} {getDisplayUnit(wiperRightR)}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Range Slider */}
             <div className="mb-5">
