@@ -30,8 +30,8 @@ const BATTERY2_INTERNAL_R = 0;    // Ω (ideální zdroj)
 const BATTERY3_INTERNAL_R = 0;    // Ω (ideální zdroj)
 // Vnitřní odpor reálných zdrojů
 const BATTERY_REAL_R = 2.0;       // Ω (reálná baterie 4.5V)
-const BATTERY2_REAL_R = 3.0;      // Ω (reálná baterie 9V)
-const BATTERY3_REAL_R = 4.0;      // Ω (reálná baterie 12V)
+const BATTERY2_REAL_R = 1.0;      // Ω (reálná baterie 9V)
+const BATTERY3_REAL_R = 1.0;      // Ω (reálná baterie 12V)
 
 const RESISTOR_R = 50.0;          // Ω (slabý)
 const RESISTOR2_R = 500.0;        // Ω (střední)
@@ -66,8 +66,8 @@ const NPN_RCE_SAT = 1;           // Ω – collector-emitter resistance in satur
 const NPN_VCE_SAT = 0.2;         // V – VCE saturation threshold
 
 // Prahové proudy (stejné pro všechny typy)
-//   off:    I ≤ 300 mA
-//   dim:    300 mA < I ≤ 500 mA
+//   off:    I < 300 mA (přísně pod — při přesně 300 mA už „dim“, ať sériové větve neblikají kvůli floatu)
+//   dim:    300 mA ≤ I ≤ 500 mA
 //   on:     500 mA < I ≤ 800 mA
 //   bright: 800 mA < I ≤ 1500 mA
 //   broken: I > 1500 mA
@@ -382,58 +382,114 @@ function forEachHalfGridOnPolyline(
   }
 }
 
-function distPointToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const abx = bx - ax;
-  const aby = by - ay;
-  const apx = px - ax;
-  const apy = py - ay;
-  const abLen2 = abx * abx + aby * aby;
-  if (abLen2 < 1e-12) return Math.hypot(apx, apy);
-  let t = (apx * abx + apy * aby) / abLen2;
-  t = Math.max(0, Math.min(1, t));
-  const qx = ax + t * abx;
-  const qy = ay + t * aby;
-  return Math.hypot(px - qx, py - qy);
-}
-
-/** True when (hx,hy) lies inside the drawn tile rect and not on allowed connector corridors (main terminals / aux). */
-function isHalfGridPointUnderComponentTile(comp: PlacedComponent, hx: number, hy: number): boolean {
+/** Střed políčka (hx,hy) leží uvnitř obdélníku dlaždice (stejně jako kreslení součástky). */
+function halfGridCenterInTileRect(comp: PlacedComponent, hx: number, hy: number): boolean {
   const px = hx * HALF;
   const py = hy * HALF;
   const tileL = comp.cx * GRID_SIZE + TILE_INSET;
   const tileT = comp.cy * GRID_SIZE + TILE_INSET;
   const tileR = comp.cx * GRID_SIZE + GRID_SIZE - TILE_INSET;
   const tileB = comp.cy * GRID_SIZE + GRID_SIZE - TILE_INSET;
-  if (px < tileL || px > tileR || py < tileT || py > tileB) return false;
+  return px >= tileL && px <= tileR && py >= tileT && py <= tileB;
+}
 
-  const nearMain = 15;
-  const [t0, t1] = getConnPoints(comp);
-  if (distPointToSegment(px, py, t0.x, t0.y, t1.x, t1.y) <= nearMain) return false;
+/** Všechny svorky, přes které smí drát vstoupit na dlaždici (včetně stírače / báze). */
+function getWireCheckTerminals(comp: PlacedComponent): { hx: number; hy: number }[] {
+  const [t0, t1] = getTerminalHalfGrid(comp);
+  const list: { hx: number; hy: number }[] = [t0, t1];
+  if (comp.type === 'potentiometer') {
+    const w = getWiperTerminalHalfGrid(comp);
+    if (w) list.push(w);
+  } else if (comp.type === 'npn') {
+    const b = getBaseTerminalHalfGrid(comp);
+    if (b) list.push(b);
+  }
+  return list;
+}
 
-  const nearAux = 22;
-  const wp = getWiperConnPoint(comp);
-  if (wp && Math.hypot(px - wp.x, py - wp.y) <= nearAux) return false;
-  const bp = getBaseConnPoint(comp);
-  if (bp && Math.hypot(px - bp.x, py - bp.y) <= nearAux) return false;
+function segmentTouchesAnyTerminal(
+  a: { hx: number; hy: number },
+  b: { hx: number; hy: number },
+  terminals: { hx: number; hy: number }[],
+): boolean {
+  return terminals.some(
+    t => (a.hx === t.hx && a.hy === t.hy) || (b.hx === t.hx && b.hy === t.hy),
+  );
+}
 
-  return true;
+/** Bod na ose mezi dvěma hlavními svorkami (vodorovně nebo svisle). */
+function onMainAxisBetween(
+  hx: number,
+  hy: number,
+  t0: { hx: number; hy: number },
+  t1: { hx: number; hy: number },
+): boolean {
+  if (t0.hx === t1.hx) {
+    const lo = Math.min(t0.hy, t1.hy);
+    const hi = Math.max(t0.hy, t1.hy);
+    return hx === t0.hx && hy >= lo && hy <= hi;
+  }
+  if (t0.hy === t1.hy) {
+    const lo = Math.min(t0.hx, t1.hx);
+    const hi = Math.max(t0.hx, t1.hx);
+    return hy === t0.hy && hx >= lo && hx <= hi;
+  }
+  return false;
+}
+
+/**
+ * Drát „pod“ součástkou: vede přes dlaždici bez připojení na svorku.
+ * Úsek je OK, pokud končí nebo začíná na některé svorce, nebo je to jeden spojitý
+ * úsek mezi oběma hlavními svorkami v téže polylinii (import / výjimečné zapojení).
+ */
+function wirePolylineViolatesComponent(
+  points: { hx: number; hy: number }[],
+  comp: PlacedComponent,
+): boolean {
+  if (points.length < 2) return false;
+  const terminals = getWireCheckTerminals(comp);
+  const termKey = new Set(terminals.map(t => `${t.hx},${t.hy}`));
+  const vertKey = new Set(points.map(p => `${p.hx},${p.hy}`));
+  const [t0, t1] = getTerminalHalfGrid(comp);
+  const hasBothMainTerminalsInWire =
+    vertKey.has(`${t0.hx},${t0.hy}`) && vertKey.has(`${t1.hx},${t1.hy}`);
+
+  let bad = false;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    forEachHalfGridOnPolyline([a, b], (hx, hy) => {
+      if (bad) return;
+      if (!halfGridCenterInTileRect(comp, hx, hy)) return;
+      const k = `${hx},${hy}`;
+      if (termKey.has(k)) return;
+      if (segmentTouchesAnyTerminal(a, b, terminals)) return;
+      if (hasBothMainTerminalsInWire && onMainAxisBetween(hx, hy, t0, t1)) return;
+      bad = true;
+    });
+  }
+  return bad;
 }
 
 function wirePolylinePassesUnderComponentTile(
   points: { hx: number; hy: number }[],
   components: PlacedComponent[],
 ): boolean {
-  let bad = false;
-  forEachHalfGridOnPolyline(points, (hx, hy) => {
-    if (bad) return;
-    for (const comp of components) {
-      if (isHalfGridPointUnderComponentTile(comp, hx, hy)) {
-        bad = true;
-        return;
-      }
-    }
-  });
-  return bad;
+  for (const comp of components) {
+    if (wirePolylineViolatesComponent(points, comp)) return true;
+  }
+  return false;
+}
+
+function anyWirePassesUnderSomeComponent(
+  wires: Wire[],
+  components: PlacedComponent[],
+): boolean {
+  for (const w of wires) {
+    if (w.points.length < 2) continue;
+    if (wirePolylinePassesUnderComponentTile(w.points, components)) return true;
+  }
+  return false;
 }
 
 function createUnionFindMap() {
@@ -1276,6 +1332,8 @@ export function CircuitCanvas({
         if (isLedType(comp.type) && blockedLeds.has(comp.id)) continue;
         // Přeskočit cutoff NPN (otevřený obvod)
         if (comp.type === 'npn' && blockedNpns.has(comp.id)) continue;
+        // Otevřený vypínač nevede proud — oba kontakty mohou být v energizedNodes, ale nesmí se modelovat jako TINY_R
+        if (comp.type === 'switch' && !switchStates[comp.id]) continue;
 
         const [t0, t1] = getTerminalHalfGrid(comp);
         const nA = nodeIdx.get(ufFind(nodeKey(t0.hx, t0.hy)))!;
@@ -1368,7 +1426,7 @@ export function CircuitCanvas({
               // nesmí se přidávat do rBranches
               R = -1; // sentinel – přeskočit rBranches.push
               break;
-            default: // switch (closed), ammeter
+            default: // vypínač (zavřený), ampérmetr, …
               R = TINY_R; break;
           }
           if (R >= 0) rBranches.push({ compId: comp.id, nA, nB, R });
@@ -1602,7 +1660,7 @@ export function CircuitCanvas({
       blockedNpnIds: blockedNpns,
       npnDebug,
     };
-  }, [components, wires, circuitAnalysis, getComponentVoltage, getComponentResistance, getSourceInternalResistance, wiperPositions, bypassedResistors]);
+  }, [components, wires, circuitAnalysis, switchStates, getComponentVoltage, getComponentResistance, getSourceInternalResistance, wiperPositions, bypassedResistors]);
 
   // ── Display-corrected analysis: excludes blocked LEDs as open circuits ──
   const openCircuitIds = useMemo(() => {
@@ -2600,6 +2658,12 @@ export function CircuitCanvas({
         const movedComp: PlacedComponent = { ...orig, cx: dragTarget.cx, cy: dragTarget.cy };
         const cur = stateRef.current;
         const newComponents = cur.components.map(c => c.id === movedComp.id ? movedComp : c);
+        if (anyWirePassesUnderSomeComponent(cur.wires, newComponents)) {
+          toast.error('Drát nesmí vést pod součástkou. Přesuň součástku jinam nebo uprav dráty.');
+          dragRef.current = null;
+          setDragTarget(null);
+          return;
+        }
         setComponents(newComponents);
         pushHistory({ ...cur, components: newComponents });
         draggedLastRef.current = true;
@@ -2819,6 +2883,10 @@ export function CircuitCanvas({
               ...cur.wires.slice(hit.wireIndex + 1),
             ];
             const newComponents = [...cur.components, newComp];
+            if (anyWirePassesUnderSomeComponent(newWires, newComponents)) {
+              toast.error('Drát nesmí vést přes součástku. Objeď ji po obvodu mřížky.');
+              return;
+            }
             setComponents(newComponents);
             setWires(newWires);
             pushHistory({ ...cur, components: newComponents, wires: newWires });
@@ -3338,7 +3406,7 @@ export function CircuitCanvas({
           if (comp.type === 'bulb' || comp.type === 'bulb2' || comp.type === 'bulb3') {
             if (rawBulbState === 'broken') {
               effectiveBulbState = 'broken';
-            } else if (!isEnergized || compCurrent <= BULB_OFF_MAX) {
+            } else if (!isEnergized || compCurrent < BULB_OFF_MAX) {
               effectiveBulbState = 'off';
             } else if (compCurrent <= BULB_DIM_MAX) {
               effectiveBulbState = 'dim';
@@ -3442,7 +3510,9 @@ export function CircuitCanvas({
                         ledBrightness={isLedType(comp.type) ? ledBrightness : undefined}
                         rotation={comp.rotation}
                       />
-                    : <ComponentSvg type={comp.type} mode="schema" isOn={effectiveIsOn} bulbState={effectiveBulbState} current={compCurrent} voltage={comp.type === 'voltmeter' ? (voltmeterReadings.get(comp.id) ?? 0) : getComponentVoltage(comp)} resistance={getComponentResistance(comp)}
+                    : <ComponentSvg type={comp.type} mode="schema" isOn={effectiveIsOn} bulbState={effectiveBulbState}
+                        current={editableSchemaValueLabels && comp.type === 'ammeter' ? 0 : compCurrent}
+                        voltage={comp.type === 'voltmeter' ? (editableSchemaValueLabels ? 0 : (voltmeterReadings.get(comp.id) ?? 0)) : getComponentVoltage(comp)} resistance={getComponentResistance(comp)}
                         wiperPosition={comp.type === 'potentiometer' ? (wiperPositions[comp.id] ?? 0.5) : undefined}
                         milliMode={comp.type === 'ammeter' ? (ammeterMilliMode[comp.id] ?? false) : undefined}
                         ledBrightness={isLedType(comp.type) ? ledBrightness : undefined}
@@ -3499,7 +3569,6 @@ export function CircuitCanvas({
                   />
                 )}
               </g>
-
 
             </g>
           );
@@ -3817,7 +3886,7 @@ export function CircuitCanvas({
         const currentVoltage = voltageSettings[comp.id] ?? getComponentVoltage(comp);
         const isRealSource = realSources[comp.id] ?? false;
         const minV = 1.0;
-        const maxV = 24.0;
+        const maxV = comp.type === 'battery2' || comp.type === 'battery3' ? 30.0 : 24.0;
         const step = 0.5;
 
         const handleVoltageChange = (newVoltage: number) => {
