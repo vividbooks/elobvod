@@ -3886,7 +3886,7 @@ export function CircuitCanvas({
         const currentVoltage = voltageSettings[comp.id] ?? getComponentVoltage(comp);
         const isRealSource = realSources[comp.id] ?? false;
         const minV = 1.0;
-        const maxV = 24.0;
+        const maxV = comp.type === 'battery2' || comp.type === 'battery3' ? 30.0 : 24.0;
         const step = 0.5;
 
         const handleVoltageChange = (newVoltage: number) => {
