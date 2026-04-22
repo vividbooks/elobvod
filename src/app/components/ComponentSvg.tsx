@@ -1029,6 +1029,35 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           {/* Přívody – křivky od vnějšího terminálu k posunutému tělu */}
           <path fill="none" stroke="#ad0404" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" d="M120.357,50.5701c-33,0,-23,-87.6057,-51,-101.6057"/>
           <path fill="none" stroke="#ad0404" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" d="M.357,-24.0356C-15.643,31.9644-48.643,50.5701-48.643,50.5701"/>
+          {/* Polarita */}
+          <text
+            x="-44"
+            y="34"
+            textAnchor="middle"
+            fontFamily="'Fenomen Sans', Arial, sans-serif"
+            fontSize="28"
+            fontWeight="800"
+            fill="#ad0404"
+            stroke="#ffffff"
+            strokeWidth="4"
+            paintOrder="stroke"
+          >
+            +
+          </text>
+          <text
+            x="116"
+            y="34"
+            textAnchor="middle"
+            fontFamily="'Fenomen Sans', Arial, sans-serif"
+            fontSize="28"
+            fontWeight="800"
+            fill="#ad0404"
+            stroke="#ffffff"
+            strokeWidth="4"
+            paintOrder="stroke"
+          >
+            −
+          </text>
           {/* ── Tělo baterie posunuto o -24 nahoru ── */}
           <g transform="translate(0,-24)">
             {/* Šedý stín základny */}
@@ -1088,6 +1117,35 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           {/* Přívody – křivky od vnějšího terminálu k posunutému tělu */}
           <path fill="none" stroke="#ad0404" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" d="M145.5041,51.346c-19,0,-18,-65,-38,-64.6057"/>
           <path fill="none" stroke="#ad0404" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" d="M44.5041,3.7404C11.0041,37.2404-23.4959,51.346-23.4959,51.346"/>
+          {/* Polarita */}
+          <text
+            x="-19"
+            y="34"
+            textAnchor="middle"
+            fontFamily="'Fenomen Sans', Arial, sans-serif"
+            fontSize="28"
+            fontWeight="800"
+            fill="#ad0404"
+            stroke="#ffffff"
+            strokeWidth="4"
+            paintOrder="stroke"
+          >
+            +
+          </text>
+          <text
+            x="141"
+            y="34"
+            textAnchor="middle"
+            fontFamily="'Fenomen Sans', Arial, sans-serif"
+            fontSize="28"
+            fontWeight="800"
+            fill="#ad0404"
+            stroke="#ffffff"
+            strokeWidth="4"
+            paintOrder="stroke"
+          >
+            −
+          </text>
           {/* ── Tělo baterie posunuto o -18 nahoru ── */}
           <g transform="translate(0,-18)">
             {/* Šedý stín základny */}
@@ -1176,6 +1234,35 @@ function RealisticContent({ type, isOn, bulbState, voltage, resistance, wiperPos
           {/* Přívody */}
           <path fill="none" stroke="#ad0404" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" d="M148,52c-20,0,-18,-64,-38,-64"/>
           <path fill="none" stroke="#ad0404" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" d="M48,5C15,38,-20,52,-20,52"/>
+          {/* Polarita */}
+          <text
+            x="-16"
+            y="34"
+            textAnchor="middle"
+            fontFamily="'Fenomen Sans', Arial, sans-serif"
+            fontSize="28"
+            fontWeight="800"
+            fill="#ad0404"
+            stroke="#ffffff"
+            strokeWidth="4"
+            paintOrder="stroke"
+          >
+            +
+          </text>
+          <text
+            x="144"
+            y="34"
+            textAnchor="middle"
+            fontFamily="'Fenomen Sans', Arial, sans-serif"
+            fontSize="28"
+            fontWeight="800"
+            fill="#ad0404"
+            stroke="#ffffff"
+            strokeWidth="4"
+            paintOrder="stroke"
+          >
+            −
+          </text>
           {/* Tělo baterie – stejný styl jako 9V */}
           <g transform="translate(0,-18)">
             {/* Šedý stín základny */}
