@@ -5,12 +5,14 @@ import {
   ExternalLink,
   ImagePlus,
   Pencil,
+  QrCode,
   Library,
   Link,
   Plus,
   Trash2,
   X,
 } from 'lucide-react';
+import QRCode from 'react-qr-code';
 import {
   Sheet,
   SheetContent,
@@ -383,13 +385,19 @@ export function TasksSheet({
   const [libraryDbMeta, setLibraryDbMeta] = useState<
     Record<string, { instruction_image: string | null; title: string | null; stepCount: number }>
   >({});
+  const [libraryQrModal, setLibraryQrModal] = useState<{
+    title: string;
+    url: string;
+  } | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [createdQrOpen, setCreatedQrOpen] = useState(false);
   const [confirmNewTaskOpen, setConfirmNewTaskOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
       setTasksPanel('library');
       setEditAssignmentUrl('');
+      setLibraryQrModal(null);
     }
   }, [open]);
 
@@ -447,6 +455,7 @@ export function TasksSheet({
   useEffect(() => {
     if (!createdUrl) return;
     setLinkCopied(false);
+    setCreatedQrOpen(false);
     const t = window.setTimeout(() => createdLinkInputRef.current?.select(), 0);
     return () => window.clearTimeout(t);
   }, [createdUrl]);
@@ -657,6 +666,7 @@ export function TasksSheet({
             setLibraryDbMeta({});
             setCreatedUrl(null);
             setLinkCopied(false);
+            setLibraryQrModal(null);
           }
           onOpenChange(v);
         }}
@@ -854,7 +864,6 @@ export function TasksSheet({
                                   </div>
                                   {link ? (
                                     <div className="flex min-w-0 w-full flex-col gap-3 border-t border-sky-50 pt-4">
-                                      <p className="m-0 text-sm font-medium text-slate-500">Rychlé akce</p>
                                       <div className="flex w-full flex-wrap items-center gap-2 py-0.5">
                                         <a
                                           href={link}
@@ -872,6 +881,14 @@ export function TasksSheet({
                                         >
                                           <Copy className="size-3.5 shrink-0 opacity-80" aria-hidden />
                                           Odkaz pro zadání
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setLibraryQrModal({ title: displayTitle, url: link })}
+                                          className="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-medium text-sky-900 transition-colors hover:bg-sky-50"
+                                        >
+                                          <QrCode className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                                          QR kód
                                         </button>
                                         <button
                                           type="button"
@@ -927,6 +944,7 @@ export function TasksSheet({
                               onClick={() => {
                                 setCreatedUrl(null);
                                 setLinkCopied(false);
+                                setCreatedQrOpen(false);
                               }}
                               className="flex size-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
                               title="Skrýt odkaz"
@@ -978,6 +996,33 @@ export function TasksSheet({
                               )}
                             </button>
                           </div>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <button
+                              type="button"
+                              onClick={() => setCreatedQrOpen(v => !v)}
+                              className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-4 py-2.5 text-sm font-medium text-sky-900 transition-colors hover:bg-sky-50"
+                            >
+                              <QrCode className="size-4" aria-hidden />
+                              {createdQrOpen ? 'Skrýt QR kód' : 'Zobrazit QR kód'}
+                            </button>
+                            <p className="m-0 text-xs leading-relaxed text-zinc-500">
+                              Tip: QR se hodí na promítnutí ve třídě.
+                            </p>
+                          </div>
+                          {createdQrOpen ? (
+                            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-sky-100 bg-white p-5">
+                              <div className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-sky-100">
+                                <QRCode value={createdUrl} size={192} />
+                              </div>
+                              <div
+                                className="max-w-full truncate rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600"
+                                style={{ fontFamily: 'ui-monospace, monospace' }}
+                                title={createdUrl}
+                              >
+                                {createdUrl}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                       <div className="flex w-full flex-col gap-8 pb-4">
@@ -1309,6 +1354,72 @@ export function TasksSheet({
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(libraryQrModal)}
+        onOpenChange={open => {
+          if (!open) setLibraryQrModal(null);
+        }}
+      >
+        <DialogContent className="max-w-[min(560px,calc(100vw-32px))] rounded-2xl p-0">
+          {libraryQrModal ? (
+            <div className="flex flex-col gap-4 p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <DialogTitle className="m-0 text-left text-base font-semibold text-slate-900">
+                    QR kód pro zadání
+                  </DialogTitle>
+                  <p className="mt-1 line-clamp-2 text-left text-sm text-slate-600">
+                    {libraryQrModal.title}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLibraryQrModal(null)}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                  aria-label="Zavřít"
+                  title="Zavřít"
+                >
+                  <X className="size-4" aria-hidden />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-center">
+                <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
+                  <QRCode value={libraryQrModal.url} size={320} />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="m-0 text-xs font-medium text-slate-600">Odkaz</p>
+                <p
+                  className="mt-1 break-all text-[11px] text-slate-700"
+                  style={{ fontFamily: 'ui-monospace, monospace' }}
+                >
+                  {libraryQrModal.url}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => void copyText('Odkaz pro zadání', libraryQrModal.url)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-4 py-2.5 text-sm font-medium text-sky-900 transition-colors hover:bg-sky-50"
+                >
+                  <Copy className="size-4 opacity-80" aria-hidden />
+                  Kopírovat odkaz
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLibraryQrModal(null)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-sky-700"
+                >
+                  Hotovo
+                </button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </>
