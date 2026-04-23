@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "build:github-project-page": "vite build --base /elobvod/",
     "build:hostinger": "vite build --base /",
     "dev": "vite",
     "secrets:github": "bash scripts/sync-github-secrets-from-env.sh"

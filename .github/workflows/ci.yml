@@ -29,6 +29,7 @@ jobs:
 
       - run: npm ci
       # Vite vkládá VITE_* do bundlu při buildu – bez toho je Supabase v produkci „vypnuté“.
+      # base „/“ = vlastní doména / subdomain u kořene. Jen github.io/REPO bez domény: npm run build:github-project-page
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
