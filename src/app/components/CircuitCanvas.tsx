@@ -1094,7 +1094,7 @@ export function CircuitCanvas({
   const [wires, setWires] = useState<Wire[]>(initialState?.wires ?? []);
   const [switchStates, setSwitchStates] = useState<Record<string, boolean>>(initialState?.switchStates ?? {});
   const [bulbStates, setBulbStates] = useState<Record<string, BulbState>>({});
-  const [bulbNominalId, setBulbNominalId] = useState<string | null>(null);
+  const [bulbNominalIds, setBulbNominalIds] = useState<Set<string>>(() => new Set());
   const [selectedCompId, setSelectedCompId] = useState<string | null>(null);
   const [voltageSettings, setVoltageSettings] = useState<Record<string, number>>(initialState?.voltageSettings ?? {});
   const [resistanceSettings, setResistanceSettings] = useState<Record<string, number>>(initialState?.resistanceSettings ?? {});
@@ -1110,7 +1110,7 @@ export function CircuitCanvas({
     onPanelOpenChange?.(editingVoltageId !== null || editingResistanceId !== null);
   }, [editingVoltageId, editingResistanceId, onPanelOpenChange]);
 
-  // bulbNominalId is a simple toggle (click again to hide)
+  // bulbNominalIds: per-bulb nominal voltage labels (toggle each bulb with select tool)
 
   // ── Voltmeter probes ──
   const [voltmeterProbes, setVoltmeterProbes] = useState<Record<string, VoltmeterProbes>>({});
@@ -2352,6 +2352,7 @@ export function CircuitCanvas({
       const hasContent = snapshot.components.length > 0 || snapshot.wires.length > 0;
       const empty: Snapshot = { components: [], wires: [], switchStates: {}, bulbStates: {} };
       setComponents([]); setWires([]); setSwitchStates({}); setBulbStates({});
+      setBulbNominalIds(new Set());
       setVoltmeterProbes({}); setBypassedResistors({});
       setPanOffset({ x: 0, y: 0 });
       if (hasContent) {
@@ -2393,7 +2394,12 @@ export function CircuitCanvas({
         setSwitchStates(newSwitch);
         setBulbStates(newBulb);
         setSelectedCompId(null);
-        if (bulbNominalId === comp.id) setBulbNominalId(null);
+        setBulbNominalIds(prev => {
+          if (!prev.has(comp.id)) return prev;
+          const next = new Set(prev);
+          next.delete(comp.id);
+          return next;
+        });
         if (editingVoltageId === comp.id) setEditingVoltageId(null);
         if (editingResistanceId === comp.id) setEditingResistanceId(null);
         // Clean up voltage/resistance/real settings and probes
@@ -2412,7 +2418,7 @@ export function CircuitCanvas({
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [setTool, undo, redo, selectedCompId, isViewOnly, pushHistory, bulbNominalId, editingVoltageId, editingResistanceId]);
+  }, [setTool, undo, redo, selectedCompId, isViewOnly, pushHistory, editingVoltageId, editingResistanceId]);
 
   const clientToSvg = useCallback((cx: number, cy: number) => {
     const svg = svgRef.current;
@@ -2966,6 +2972,12 @@ export function CircuitCanvas({
       setComponents(newComponents);
       setSwitchStates(newSwitch);
       setBulbStates(newBulb);
+      setBulbNominalIds(prev => {
+        if (!prev.has(comp.id)) return prev;
+        const next = new Set(prev);
+        next.delete(comp.id);
+        return next;
+      });
       // Clean up voltage/resistance/real settings and probes
       setVoltageSettings(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
       setResistanceSettings(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
@@ -2995,6 +3007,12 @@ export function CircuitCanvas({
       setComponents(newComponents);
       setSwitchStates(newSwitch);
       setBulbStates(newBulb);
+      setBulbNominalIds(prev => {
+        if (!prev.has(comp.id)) return prev;
+        const next = new Set(prev);
+        next.delete(comp.id);
+        return next;
+      });
       // Clean up voltage/resistance/real settings and probes
       setVoltageSettings(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
       setResistanceSettings(prev => { const next = { ...prev }; delete next[comp.id]; return next; });
@@ -3007,18 +3025,21 @@ export function CircuitCanvas({
     } else if (comp.type === 'switch' && tool === 'select') {
       setSwitchStates(prev => ({ ...prev, [comp.id]: !prev[comp.id] }));
     } else if ((comp.type === 'bulb' || comp.type === 'bulb2' || comp.type === 'bulb3' || isLedType(comp.type)) && tool === 'select') {
-      // Click on broken bulb/LED → "replace" it (fix). For unbroken bulbs show nominal voltage label.
-      setBulbStates(prev => {
-        if (prev[comp.id] === 'broken') {
+      // Broken bulb/LED → "replace" / fix; unbroken bulb → toggle nominal voltage label per component
+      if (cur.bulbStates[comp.id] === 'broken') {
+        setBulbStates(prev => {
           const next = { ...prev };
           delete next[comp.id];
           return next;
-        }
-        if (comp.type === 'bulb' || comp.type === 'bulb2' || comp.type === 'bulb3') {
-          setBulbNominalId(prev => (prev === comp.id ? null : comp.id));
-        }
-        return prev;
-      });
+        });
+      } else if (comp.type === 'bulb' || comp.type === 'bulb2' || comp.type === 'bulb3') {
+        setBulbNominalIds(prev => {
+          const next = new Set(prev);
+          if (next.has(comp.id)) next.delete(comp.id);
+          else next.add(comp.id);
+          return next;
+        });
+      }
     } else if ((comp.type === 'battery' || comp.type === 'battery2' || comp.type === 'battery3') && tool === 'select' && !isViewOnly) {
       // Open voltage editor dialog
       setEditingVoltageId(comp.id);
@@ -3561,7 +3582,7 @@ export function CircuitCanvas({
                         milliMode={comp.type === 'ammeter' ? (ammeterMilliMode[comp.id] ?? false) : undefined}
                         ledBrightness={isLedType(comp.type) ? ledBrightness : undefined}
                         rotation={comp.rotation}
-                        showBulbNominal={bulbNominalId === comp.id}
+                        showBulbNominal={bulbNominalIds.has(comp.id)}
                       />
                     : <ComponentSvg type={comp.type} mode="schema" isOn={effectiveIsOn} bulbState={effectiveBulbState}
                         current={editableSchemaValueLabels && comp.type === 'ammeter' ? 0 : compCurrent}
